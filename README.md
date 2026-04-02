@@ -127,7 +127,7 @@ zfx_plot<-plot_genomic_tracks(genomicLoc="ZFX", covFiles=k4me3_coverageTracks, y
 print(zfx_plot$figure)
 
 ```
-![Alt text](examplePlots/zfx_plot.png)
+![Alt text](figures/ZFX_basic.png)
 
 
 Colors and/or labels can be specified for each track:
@@ -139,7 +139,7 @@ loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColo
 print(zfx_plot_2$figure)
 
 ```
-![Alt text](examplePlots/zfx_plot_2.png)
+![Alt text](figures/ZFX_color.png)
 
 
 You can label and/or color specific peaks differently using ```specialPeaks```, ```labelSpecialPeaks```, and ```specialPeakColors```:
