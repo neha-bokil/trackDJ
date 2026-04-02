@@ -3,6 +3,7 @@
 export(plot_genomic_tracks)
 export(trackDJ)
 importFrom(data.table,":=")
+importFrom(ggplot2,facet_grid)
 importFrom(methods,is)
 importFrom(rlang,.data)
 importFrom(stats,end)

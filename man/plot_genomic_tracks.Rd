@@ -51,6 +51,7 @@ plot_genomic_tracks(
   specialLoopColors = NULL,
   loop_orientation = "above",
   trackOrder_type = c("coverage", "peaks", "loops", "genome"),
+  fontSize = 9,
   saveFigure = FALSE,
   figureName = "plot_genomic_tracks_figure",
   figureFormat = "png"
@@ -148,6 +149,8 @@ plot_genomic_tracks(
 \item{loop_orientation}{either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'}
 
 \item{trackOrder_type}{character vector with the desired order of track types. Default is c("coverage","peaks","loops", "genome")}
+
+\item{fontSize}{a numeric for desired font size. Default is 9.}
 
 \item{saveFigure}{boolean, whether you want to save the final figure to a file. Default is FALSE.}
 

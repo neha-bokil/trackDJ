@@ -3,17 +3,9 @@
 #' @importFrom utils read.delim read.table data
 #' @importFrom rlang .data
 #' @importFrom data.table :=
+#' @importFrom ggplot2 facet_grid
+NULL
 
-suppressPackageStartupMessages(library(ggplot2))
-suppressPackageStartupMessages(library(ggrepel))
-suppressPackageStartupMessages((library(GenomicRanges)))
-suppressPackageStartupMessages(library(rtracklayer))
-suppressPackageStartupMessages(library(biomaRt))
-suppressPackageStartupMessages(library(patchwork))
-suppressPackageStartupMessages(library(tools))
-suppressPackageStartupMessages(library(data.table))
-suppressPackageStartupMessages(library(ggrastr))
-options(timeout = 600)
 #' plot gene models
 #' @param genomicLoc character vector. A gene name (ex:"ZFX") OR a genomic locus of the form c(chromosome, start coordinate, end coordinate) (ex: c("chrX", 24040226, 24232664))
 #' @param mart a mart obtained by utilizing the useMart function in biomaRt
@@ -31,6 +23,7 @@ options(timeout = 600)
 #' @param tag_options character vector of which tags to keep if using a custom annotation and setting supportedTranscriptsOnly to TRUE.
 #' @param canonicalTranscriptOnly boolean, whether to only show the canoncial transcript. Default is FALSE.
 #' @param upDown a character vector of length 2. if genomicLoc is a gene, how many base pairs upstream (first value) and downstream (second value) of the gene you want in your figure. Default is c(2000,2000)
+#' @param fontSize a numeric for desired font size. Default is 9.
 #' @return list of length 2: figure (ggplot of gene models); genePlot (ggplot of gene models)
 
 plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE, transcript_list=NULL,
@@ -38,7 +31,8 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
                     appris_options=NULL,tsl_options=NULL,tag_options=NULL,
                     canonicalTranscriptOnly=FALSE, mart=NULL,
                     ensembl_set="hsapiens_gene_ensembl",
-                    gene_symbol="hgnc_symbol", includeNPC=FALSE, custom_anno=NULL,upDown=c(2000,2000)) {
+                    gene_symbol="hgnc_symbol", includeNPC=FALSE, custom_anno=NULL,upDown=c(2000,2000), fontSize=9) {
+  fontSize_text<-fontSize/ggplot2::.pt
   #genomicLoc should either be in the form of a gene name (string) or as a vector with three entries (chromosome, start coordinate, end coordinate)
   if (length(genomicLoc) !=1 & length(genomicLoc)!=3) {
     stop("error: Please provide either a gene name or set of genomic coordinates")
@@ -63,6 +57,9 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
       #set up mart
       mart<-biomaRt::useMart("ensembl", dataset=ensembl_set)
     }
+    else {
+      ensembl_set<-mart@dataset
+    }
     #make sure gene_symbol is in mart, otherwise switch to external_gene_name
     if (gene_symbol %in% biomaRt::listAttributes(mart)$name == FALSE) {
       if ("external_gene_name" %in% biomaRt::listAttributes(mart)$name==TRUE) {
@@ -78,7 +75,42 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
     if (length(genomicLoc)==1) {
       geneName<-genomicLoc
       #get coordinate information of gene
-      gene_info <- biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position","strand"),filters = gene_symbol,values = geneName,mart = mart)
+
+      gene_info<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position","strand"),filters = gene_symbol,values = geneName,mart = mart)}, error=function(e) {
+        message("getBM failed: ", e$message)
+        NULL
+      })
+
+      if (is.null(gene_info)) {
+        message("trying useast mirror")
+        eastMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "useast")
+        gene_info<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position","strand"),filters = gene_symbol,values = geneName,mart = eastMart)}, error=function(e) {
+          message("getBM with useast mirror failed: ", e$message)
+          NULL
+        })
+        if (is.null(gene_info)) {
+          message("trying www mirror")
+          westMart<-biomaRt::useEnsembl(biomart="genes", dataset=ensembl_set, mirror="www")
+          gene_info<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position","strand"),filters = gene_symbol,values = geneName,mart = westMart)}, error=function(e) {
+            message("getBM with www mirror failed: ", e$message)
+            NULL
+          })
+
+          if (is.null(gene_info)) {
+            message("trying asia mirror")
+            asiaMart<-biomaRt::useEnsembl(biomart="genes", dataset=ensembl_set, mirror="asia")
+            gene_info<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position","strand"),filters = gene_symbol,values = geneName,mart = asiaMart)}, error=function(e) {
+              message("getBM with asia mirror failed: ", e$message)
+              NULL
+            })
+            if (is.null(gene_info)) {
+              stop("error: all biomaRt::getBM() attempts failed")
+            }
+
+          }
+
+          }
+      }
 
       if (base::nrow(gene_info)>1) {
         message("warning: more than one location detected for the provided gene name")
@@ -125,6 +157,8 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
 
       graphTitle<-paste0(genomicLoc, "\n", gene_info$chromosome_name, ":",min(as.numeric(start), as.numeric(end)), "-", max(as.numeric(start),as.numeric(end))) #used for the title of the plot
     }
+
+
     else {
       #if coordinates are provided rather than a gene name
       upDown<-c(0,0)
@@ -160,11 +194,68 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
     else {
       typeFilter<-"gene_biotype"
     }
-    gene_annot <- biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position", gene_symbol, "strand", typeFilter),
-      filters = c("chromosome_name", "start", "end"),
-      values = list(chr, min(as.numeric(start),as.numeric(end)), max(as.numeric(start),as.numeric(end))),
-      mart = mart)
 
+    martUsed<-"og"
+    gene_annot<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position", gene_symbol, "strand", typeFilter),
+                                         filters = c("chromosome_name", "start", "end"),
+                                         values = list(chr, min(as.numeric(start),as.numeric(end)), max(as.numeric(start),as.numeric(end))),
+                                         mart = mart)}, error=function(e) {
+      message("getBM failed: ", e$message)
+      NULL
+    })
+
+    if (is.null(gene_annot)) {
+      message("trying useast mirror")
+      martUsed<-"east"
+      if (exists("eastMart")==FALSE) {
+        eastMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "useast")
+      }
+
+      gene_annot<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position", gene_symbol, "strand", typeFilter),
+                                           filters = c("chromosome_name", "start", "end"),
+                                           values = list(chr, min(as.numeric(start),as.numeric(end)), max(as.numeric(start),as.numeric(end))),
+                                           mart = eastMart)}, error=function(e) {
+                                             message("getBM with useast mirror failed: ", e$message)
+                                             NULL
+                                           })
+      if (is.null(gene_annot)) {
+        message("trying www mirror")
+        martUsed<-"west"
+        if (exists("westMart")==FALSE) {
+          westMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "www")
+        }
+
+        gene_annot<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position", gene_symbol, "strand", typeFilter),
+                                             filters = c("chromosome_name", "start", "end"),
+                                             values = list(chr, min(as.numeric(start),as.numeric(end)), max(as.numeric(start),as.numeric(end))),
+                                             mart = westMart)}, error=function(e) {
+                                               message("getBM with www mirror failed: ", e$message)
+                                               NULL
+                                             })
+
+        if (is.null(gene_annot)) {
+          message("trying asia mirror")
+          martUsed<-"asia"
+          if (exists("asiaMart")==FALSE) {
+            asiaMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "asiaMart")
+          }
+
+          gene_annot<-tryCatch({biomaRt::getBM(attributes = c("chromosome_name", "start_position", "end_position", gene_symbol, "strand", typeFilter),
+                                               filters = c("chromosome_name", "start", "end"),
+                                               values = list(chr, min(as.numeric(start),as.numeric(end)), max(as.numeric(start),as.numeric(end))),
+                                               mart = asiaMart)}, error=function(e) {
+                                                 message("getBM with asia mirror failed: ", e$message)
+                                                 NULL
+                                               })
+
+          if (is.null(gene_annot)) {
+            martUsed<-"none"
+            stop("error: all biomaRt::getBM() attempts failed")
+          }
+        }
+
+      }
+    }
 
 
     #filter out non-protein-coding genes, if applicable
@@ -378,10 +469,10 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
 
 
     gene_annot <- data.frame( chr = as.character(GenomeInfoDb::seqnames(genesInRegion)),
-      gene = as.data.frame(genesInRegion)[[gene_symbol]],
-      start = start(genesInRegion),
-      end = end(genesInRegion),
-      strand = strand(genesInRegion))
+                              gene = as.data.frame(genesInRegion)[[gene_symbol]],
+                              start = IRanges::start(genesInRegion),
+                              end = IRanges::end(genesInRegion),
+                              strand = GenomicRanges::strand(genesInRegion))
 
 
 
@@ -478,12 +569,13 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
       gene_annot$trackType<-"gene"
       gene_annot$plot_start<-min(start,end)
       gene_annot$plot_end<-max(start,end)
+
       p1<-ggplot2::ggplot(gene_annot, ggplot2::aes(x = .data$start, y = .data$graph_location)) +
         ggplot2::geom_segment(ggplot2::aes(x=.data$start, xend=.data$end, y=.data$graph_location, yend=.data$graph_location),
                      data=gene_annot, linewidth=2.5, arrow=arrow_properties_gene, lineend = "butt",
                      linejoin = "mitre")+
         ggplot2::geom_label(color="black", fill="white",ggplot2::aes(x=.data$midX, y=.data$graph_location, label=.data$label),
-                   fontface = "italic",size = 9, size.unit = "pt")+
+                   fontface = "italic",size = fontSize_text)+
         ggplot2::xlim(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000)+
         ggplot2::ylim(min(gene_annot$graph_location-2),2)+ggplot2::theme_classic()+ ggplot2::ggtitle(graphTitle)+
         ggplot2::theme(axis.title.y = ggplot2::element_blank(),
@@ -521,6 +613,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
 
       }
 
+
       #only use available transcript filters
       transcript_filters_present<-transcript_filters[transcript_filters %in% biomaRt::listAttributes(mart)$name==TRUE]
       if ((length(transcript_filters_present) < length(transcript_filters)) & is.null(transcript_list)==FALSE) {
@@ -532,12 +625,61 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
       }
 
 
-
       #get transcript annotations
-      transcript_annot <- biomaRt::getBM(attributes = c("ensembl_transcript_id", "chromosome_name", "transcript_start", "transcript_end", "strand", gene_symbol,"external_transcript_name","transcript_is_canonical",transcript_filters_present),
-        filters = c("chromosome_name", "start", "end"),
-        values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
-        mart = mart)
+
+
+      transcript_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "chromosome_name", "transcript_start", "transcript_end", "strand", gene_symbol,"external_transcript_name","transcript_is_canonical",transcript_filters_present),
+                                                 filters = c("chromosome_name", "start", "end"),
+                                                 values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                                 mart = mart)}, error=function(e) {
+        message("getBM failed: ", e$message)
+        NULL
+      })
+
+      if (is.null(transcript_annot)) {
+        message("trying useast mirror")
+        if (exists("eastMart")==FALSE) {
+          eastMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "useast")
+        }
+
+        transcript_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "chromosome_name", "transcript_start", "transcript_end", "strand", gene_symbol,"external_transcript_name","transcript_is_canonical",transcript_filters_present),
+                                                   filters = c("chromosome_name", "start", "end"),
+                                                   values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                                   mart = eastMart)}, error=function(e) {
+                                                     message("getBM failed: ", e$message)
+                                                     NULL
+                                                   })
+
+        if (is.null(transcript_annot)) {
+          message("trying www mirror")
+          if (exists("westMart")==FALSE) {
+            westMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "www")
+          }
+          transcript_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "chromosome_name", "transcript_start", "transcript_end", "strand", gene_symbol,"external_transcript_name","transcript_is_canonical",transcript_filters_present),
+                                                     filters = c("chromosome_name", "start", "end"),
+                                                     values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                                     mart = westMart)}, error=function(e) {
+                                                       message("getBM failed: ", e$message)
+                                                       })
+          if (is.null(transcript_annot)) {
+            message("trying asia mirror")
+            if (exists("asiaMart")==FALSE) {
+              asiaMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "asia")
+            }
+
+            transcript_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "chromosome_name", "transcript_start", "transcript_end", "strand", gene_symbol,"external_transcript_name","transcript_is_canonical",transcript_filters_present),
+                                                       filters = c("chromosome_name", "start", "end"),
+                                                       values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                                       mart = asiaMart)}, error=function(e) {
+                                                         message("getBM failed: ", e$message)
+                                                       })
+
+            if (is.null(transcript_annot)) {
+              stop("failed to get transcript annotation")
+            }
+          }
+        }
+      }
 
       transcript_annot<-data.frame(transcript_annot, stringsAsFactors = FALSE, check.names=FALSE)
 
@@ -656,10 +798,65 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
       transcript_annot<-transcript_annot[,colnames(transcript_annot) !="minimum"]
 
       #get exon annotations
-      exon_annot<- biomaRt::getBM(attributes = c("ensembl_transcript_id", "exon_chrom_start", "exon_chrom_end"),
-        filters = c("chromosome_name", "start", "end"),
-        values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
-        mart = mart)
+
+
+      exon_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "exon_chrom_start", "exon_chrom_end"),
+                                           filters = c("chromosome_name", "start", "end"),
+                                           values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                           mart = mart)}, error=function(e) {
+                                                   message("getBM failed: ", e$message)
+                                                   NULL
+                                                 })
+      if (is.null(exon_annot)) {
+        message("trying useast mirror")
+        if(exists("eastMart")==FALSE) {
+          eastMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "useast")
+        }
+        exon_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "exon_chrom_start", "exon_chrom_end"),
+                                             filters = c("chromosome_name", "start", "end"),
+                                             values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                             mart = eastMart)}, error=function(e) {
+                                               message("getBM failed: ", e$message)
+                                               NULL
+                                             })
+        if (is.null(exon_annot)) {
+          message("trying www mirror")
+        }
+        if (exists("westMart")==FALSE) {
+          westMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "www")
+        }
+
+        exon_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "exon_chrom_start", "exon_chrom_end"),
+                                             filters = c("chromosome_name", "start", "end"),
+                                             values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                             mart = westMart)}, error=function(e) {
+                                               message("getBM failed: ", e$message)
+                                               NULL
+                                             })
+
+        if(is.null(exon_annot)) {
+          message("trying asia mirror")
+          if (exists("asiaMart")==FALSE) {
+            asiaMart<-biomaRt::useEnsembl(biomart = "genes",dataset = ensembl_set, mirror = "asia")
+          }
+          exon_annot<-tryCatch({biomaRt::getBM(attributes = c("ensembl_transcript_id", "exon_chrom_start", "exon_chrom_end"),
+                                               filters = c("chromosome_name", "start", "end"),
+                                               values = list(chr, min(as.numeric(start),as.numeric(end)),max(as.numeric(start),as.numeric(end))),
+                                               mart = asiaMart)}, error=function(e) {
+                                                 message("getBM failed: ", e$message)
+                                                 NULL
+                                               })
+
+          if(is.null(exon_annot)) {
+            stop("failed to get exon annotations")
+          }
+
+        }
+      }
+
+
+
+
 
       exon_annot<-exon_annot[exon_annot$ensembl_transcript_id %in% transcript_annot$ensembl_transcript_id,]
 
@@ -897,7 +1094,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
         ggplot2::geom_segment(data=allInfo[allInfo$type=="Gene",],ggplot2::aes(x=.data$start, xend=.data$end, y=.data$graph_location, yend=.data$graph_location),
                      linewidth=3, arrow=arrow_properties_gene, lineend = "butt", linejoin = "mitre")+
         ggplot2::geom_label(data=allInfo[allInfo$type=="Gene",],color="black", fill="white",ggplot2::aes(x=.data$midX, y=.data$graph_location, label=.data$label),
-                   fontface = "italic",size = 9, size.unit = "pt")+
+                   fontface = "italic",size = fontSize_text)+
         ggplot2::xlim(min(start,end)/1000000, max(start,end)/1000000)+
         ggplot2::ylim(min(allInfo$graph_location)-1,2)+ggplot2::theme_classic()+ggplot2::ggtitle(graphTitle)+
         ggplot2::theme(axis.title.y = ggplot2::element_blank(),
@@ -908,7 +1105,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
         ggplot2::xlab("Location (Mb)")
 
       if (includeTxtNames==TRUE) {
-        p1<-p1+ggplot2::geom_text(data=allInfo[allInfo$type=="Transcript",], color="black", ggplot2::aes(x=.data$midX,y=.data$txt_label_loc, label=.data$label), size=9,size.unit = "pt")
+        p1<-p1+ggplot2::geom_text(data=allInfo[allInfo$type=="Transcript",], color="black", ggplot2::aes(x=.data$midX,y=.data$txt_label_loc, label=.data$label), size=fontSize_text)
       }
 
 
@@ -945,9 +1142,10 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
 #' @param fillArea boolean, set this to FALSE if you do not want to fill in the area under your coverage tracks. Default is TRUE
 #' @param logScale boolean, set this to TRUE if you want data plotted on a log scale. Default is FALSE
 #' @param rasterizePlot boolean, set this to TRUE if you want to rasterize the coverage plot. This can be useful as coverage files can be rather large, and that can mess up the plot when you save it as a vector file. Default is FALSE
+#' @param fontSize a numeric for desired font size. Default is 9.
 #' @return ggplot of coverage tracks
 
-plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors="black",ymin=NULL, ymax=NULL, fillArea=TRUE,logScale=FALSE, rasterizePlot=FALSE) {
+plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors="black",ymin=NULL, ymax=NULL, fillArea=TRUE,logScale=FALSE, rasterizePlot=FALSE, fontSize=9) {
   if (length(genomicLoc) != 3) {
     stop("error in plot_coverage: please provide genomic coordinates")
   }
@@ -1030,7 +1228,8 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
   allSamples$rasterize<-rasterizePlot
   allSamples$fillArea<-fillArea
 
-  allSamples$displayNames<-factor(allSamples$displayNames, levels=covTrackNames)
+
+  allSamples$displayNames<-factor(allSamples$displayNames, levels=covTrackNames, ordered=TRUE)
 
   if (is.null(ymin)) {
     ymin<-min(allSamples$score)
@@ -1065,36 +1264,42 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
     if (fillArea==TRUE) {
       p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
         ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-        ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
-        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = 9), axis.text.y=ggplot2::element_text(size=9))+
+        ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
+        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize), axis.text.y=ggplot2::element_text(size=fontSize))+
         ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+
-        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=9))
+        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize))
     }
     else {
       p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, xend=.data$end, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
         ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-        ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
-        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = 9), axis.text.y=ggplot2::element_text(size=9))+
+        ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
+        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize), axis.text.y=ggplot2::element_text(size=fontSize))+
         ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+
-        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=9))
+        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize))
     }
 
   }
 
   else { #plot without log transform
     if (fillArea==TRUE) {
-      p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
+
+
+      start_num <- min(as.numeric(unclass(start)), as.numeric(unclass(end)))
+      end_num   <- max(as.numeric(unclass(start)), as.numeric(unclass(end)))
+
+      p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames,group = .data$colorNames)) +
         ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-        ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
-        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = 9),axis.text.y=ggplot2::element_text(size=9))+ggplot2::scale_y_continuous(n.breaks = 3)+
-        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=9))
+        ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+
+        ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
+        ggplot2::scale_y_continuous(n.breaks = 3)+ggplot2::coord_cartesian(xlim = c(start_num/1000000, end_num/1000000), ylim = c(ymin, ymax))+
+        ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize),axis.text.x=ggplot2::element_text(size=fontSize),plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize))
     }
     else {
       p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, xend=.data$end, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
         ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-        ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
-        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = 9),axis.text.y=ggplot2::element_text(size=9))+ggplot2::scale_y_continuous(n.breaks = 3)+
-        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=9))
+        ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
+        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize),axis.text.y=ggplot2::element_text(size=fontSize))+ggplot2::scale_y_continuous(n.breaks = 3)+
+        ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize))
     }
   }
   if (rasterizePlot==TRUE) {
@@ -1110,10 +1315,10 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
 
   }
 
+
   return(p1)
 }
 
-#########
 
 #' plot peak tracks
 #' @param genomicLoc character vector of the form c(chromosome, start coordinate, end coordinate) (ex: c("chrX", 24040226, 24232664))
@@ -1126,12 +1331,14 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
 #' @param specialPeakColors character vector containing the color(s) you want to give your special peaks. requires 'specialPeaks' to be specified
 #' @param labelStrand boolean, set to TRUE if the strand of each peak should be indicated. assumes strand information is in the sixth column of a given .bed file
 #' @param strandColors character vector of length 2. First is the color for the + strand, the second is the color for the - strand. overrides 'peakTrackColors' but does NOT override 'specialPeakColors'
+#' @param fontSize a numeric for desired font size. Default is 9.
 #' @return ggplot of peak tracks
 
 plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
                      labelAllPeaks=FALSE, peakTrackColors="black",
                      specialPeaks=NULL, labelSpecialPeaks=FALSE, specialPeakColors=NULL,
-                     labelStrand=FALSE, strandColors=NULL) {
+                     labelStrand=FALSE, strandColors=NULL, fontSize=9) {
+  fontSize_text<-fontSize/ggplot2::.pt
   if (length(genomicLoc) != 3) {
     stop("error in plot_peaks: please provide genomic coordinates")
   }
@@ -1291,6 +1498,7 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
 
 
     #build the plot
+    allPeaks$displayNames<-as.character(allPeaks$displayNames)
     allPeaks$displayNames<-factor(allPeaks$displayNames, levels=peakTrackNames)
     allPeaks$labelStrand<-labelStrand
     allPeaks$labelAllPeaks<-labelAllPeaks
@@ -1301,28 +1509,29 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
                                       color=.data$colorNames),linewidth=3, lineend = "butt", linejoin = "mitre")+
       ggplot2::scale_color_identity()+ggplot2::theme_classic()+
       ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim=c(0,2))+
-      ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+
+      ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+
       ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
       ggplot2::theme(axis.title.y = ggplot2::element_blank(),
             axis.text.y = ggplot2::element_blank(),
             axis.ticks.y = ggplot2::element_blank(),
             axis.line.y = ggplot2::element_blank(),
-            plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = 9))
+            plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize))
 
     if (labelStrand == TRUE) {
 
-      p1<-p1+ggplot2::geom_text(data=allPeaks, ggplot2::aes(x=.data$midX, label=.data$strand, y=.data$graph_location), size=9, color="black", vjust = 0.5,size.unit = "pt")
+      p1<-p1+ggplot2::geom_text(data=allPeaks, ggplot2::aes(x=.data$midX, label=.data$strand, y=.data$graph_location), size=fontSize_text, color="black", vjust = 0.5)
 
     }
 
     if (labelAllPeaks == TRUE | labelSpecialPeaks== TRUE) {
 
-      p1<-p1+ggrepel::geom_text_repel(data=allPeaks, y=0.85, ggplot2::aes(x=.data$midX, label=.data$label), size=9, color="black", nudge_y=-0.2, direction="y", segment.size=0.5,size.unit = "pt")
+      p1<-p1+ggrepel::geom_text_repel(data=allPeaks, y=0.85, ggplot2::aes(x=.data$midX, label=.data$label), size=fontSize_text, color="black", nudge_y=-0.2, direction="y", segment.size=0.5,na.rm = TRUE)
 
 
     }
 
   }
+
 
 
   return(p1)
@@ -1342,11 +1551,12 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
 #' @param specialLoops character vector listing the names of specific loops you want to put in a different color
 #' @param specialLoopColors character vector containing the color(s) you want to give your special loops. requires 'specialLoops' to be specified
 #' @param loop_orientation either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'
+#' @param fontSize a numeric for desired font size. Default is 9.
 #' @return ggplot of loop tracks
 
 plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
                      loopTrackColors="black", lineSize=0.8, alpha=0.8,rasterizePlot=FALSE,
-                     specialLoops=NULL, specialLoopColors=NULL, minScore=NULL, loop_orientation="above") {
+                     specialLoops=NULL, specialLoopColors=NULL, minScore=NULL, loop_orientation="above", fontSize=9) {
   if (length(genomicLoc) != 3) {
     stop("error in plot_loops: please provide genomic coordinates")
   }
@@ -1501,6 +1711,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
     allLoops$lineSize[is.na(allLoops$score)==FALSE & allLoops$score < minScore]<-lineSize/2
 
   }
+  allLoops$displayNames<-as.character(allLoops$displayNames)
   allLoops$displayNames<-factor(allLoops$displayNames, levels=loopTrackNames)
 
   p1<-ggplot2::ggplot(allLoops)+ggplot2::geom_curve(ggplot2::aes(x=.data$start, y=0, xend=.data$end, yend=0, color=.data$colorNames, alpha=.data$alpha, linewidth=.data$lineSize),
@@ -1509,7 +1720,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
                      color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
     ggplot2::geom_segment(ggplot2::aes(x=.data$start2, xend=.data$end2, y=0, yend=0,
                      color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
-    ggplot2::scale_color_identity()+ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~., switch="y", scales="free_y")+
+    ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames ~., switch="y", scales="free_y", drop=FALSE)+
     ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
     ggplot2::coord_cartesian(xlim=c(as.numeric(start)/1000000, as.numeric(end)/1000000))+
     ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
@@ -1517,7 +1728,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
                                                 axis.ticks.y=ggplot2::element_blank(),
                                                 axis.line.y=ggplot2::element_blank(),
                                                 plot.title=ggplot2::element_text(hjust=0.5),
-                                                legend.position = "none",strip.text = ggplot2::element_text(size = 9))
+                                                legend.position = "none",strip.text = ggplot2::element_text(size = fontSize))
   if (rasterizePlot==TRUE) {
     rast_layers <- lapply(p1$layers, function(layer) {
       if (inherits(layer$geom, "GeomCurve") || inherits(layer$geom,"GeomSegment")) {
@@ -1529,6 +1740,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
 
     p1$layers<-rast_layers
   }
+
 
   return(p1)
 
@@ -1590,6 +1802,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
 #' @param specialLoopColors character vector containing the color(s) you want to give your special loops. requires 'specialLoops' to be specified
 #' @param loop_orientation either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'
 #' @param trackOrder_type character vector with the desired order of track types. Default is c("coverage","peaks","loops", "genome")
+#' @param fontSize a numeric for desired font size. Default is 9.
 #' @param saveFigure boolean, whether you want to save the final figure to a file. Default is FALSE.
 #' @param figureName if 'saveFigure' is TRUE, what you want the filename to be. Default is "plot_genomic_tracks_figure"
 #' @param figureFormat if 'saveFigure' is TRUE, what format you want to save it as. Default is 'png'
@@ -1614,8 +1827,9 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
                               loopFiles=NULL, loopTrackNames=NULL,
                               loopTrackColors="black", lineSize=0.8,alpha=0.8,minScore=NULL,rasterizeLoopPlot=FALSE,
                               specialLoops=NULL,specialLoopColors=NULL, loop_orientation="above",
-                              trackOrder_type=c("coverage","peaks","loops","genome"),
+                              trackOrder_type=c("coverage","peaks","loops","genome"), fontSize=9,
                               saveFigure=FALSE, figureName="plot_genomic_tracks_figure",figureFormat="png") {
+  fontSize_text<-fontSize/ggplot2::.pt
   #basic checks
   if (length(genomicLoc) !=1 & length(genomicLoc)!=3) {
     stop("error: Please provide either a gene name or set of genomic coordinates")
@@ -1649,12 +1863,13 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
     n<-custom_anno
     o<-upDown
     p<-includeTxtNames
+    q<-fontSize
 
     gene_plot<-plot_gene(genomicLoc=a, includeTranscripts=b, includeTxtNames=p,transcript_list=c,
                          supportedTranscriptsOnly = d, transcript_filters = e,
                          appris_options =f,tsl_options=g, tag_options = h,
                          canonicalTranscriptOnly = i, mart=j, ensembl_set = k,
-                         gene_symbol=l, includeNPC=m, custom_anno=n, upDown=o)
+                         gene_symbol=l, includeNPC=m, custom_anno=n, upDown=o, fontSize=q)
 
     gene_plot<-gene_plot$genePlot
     gene_plot_data<-gene_plot$data
@@ -1749,7 +1964,8 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
         g<-logScale
         h<-rasterizeCovPlot
         j<-fillArea
-        p_coverage<-plot_coverage(genomicLoc=a, covFiles=b, covTrackNames=c, covTrackColors=d, ymin=e, ymax=f, fillArea=j, logScale=g, rasterizePlot=h)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
+        k<-fontSize
+        p_coverage<-plot_coverage(genomicLoc=a, covFiles=b, covTrackNames=c, covTrackColors=d, ymin=e, ymax=f, fillArea=j, logScale=g, rasterizePlot=h, fontSize=k)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
         #if plot is not the last one, remove X axis
         if (lastType !="coverage") {
           p1<-p_coverage+ggplot2::theme(axis.title.x=ggplot2::element_blank(),
@@ -1758,8 +1974,8 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
                                axis.text.x=ggplot2::element_blank())
         }
         else {
-          p1<-p_coverage+ggplot2::theme(axis.text=ggplot2::element_text(size=9),
-                               axis.title.x=ggplot2::element_text(size=9),
+          p1<-p_coverage+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize),
+                               axis.title.x=ggplot2::element_text(size=fontSize),
                                axis.line.x=ggplot2::element_line(linewidth=1))
         }
         p1<-p1+ggplot2::ggtitle(NULL)
@@ -1784,9 +2000,10 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
         h<-labelStrand
         i<-strandColors
         j<-labelAllPeaks
+        k<-fontSize
         p_peaks<-plot_peaks(genomicLoc=a, peakFiles=b, peakTrackNames=c, peakTrackColors=d,
                             specialPeaks=e, labelSpecialPeaks=f, specialPeakColors=g,
-                            labelStrand=h, strandColors=i, labelAllPeaks=j)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
+                            labelStrand=h, strandColors=i, labelAllPeaks=j, fontSize=k)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
 
         #if plot is not the last one, remove X axis
         if (lastType !="peaks") {
@@ -1797,8 +2014,8 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
         }
 
         else {
-          p1<-p_peaks+ggplot2::theme(axis.text=ggplot2::element_text(size=9),
-                            axis.title.x=ggplot2::element_text(size=9),
+          p1<-p_peaks+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize),
+                            axis.title.x=ggplot2::element_text(size=fontSize),
                             axis.line.x=ggplot2::element_line(linewidth=1))
         }
 
@@ -1825,8 +2042,9 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
         i<-loop_orientation
         j<-minScore
         k<-rasterizeLoopPlot
+        l<-fontSize
 
-        p_loops<-plot_loops(genomicLoc=a, loopFiles=b, loopTrackNames=c, loopTrackColors=d, lineSize=e, alpha=f, specialLoops=g, specialLoopColors=h, loop_orientation=i, minScore = j, rasterizePlot=k)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
+        p_loops<-plot_loops(genomicLoc=a, loopFiles=b, loopTrackNames=c, loopTrackColors=d, lineSize=e, alpha=f, specialLoops=g, specialLoopColors=h, loop_orientation=i, minScore = j, rasterizePlot=k, fontSize=l)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
 
         #if plot is not the last one, remove X axis
         if (lastType !="loops" & lastType!="contacts") {
@@ -1837,8 +2055,8 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
         }
 
         else {
-          p1<-p_loops+ggplot2::theme(axis.text=ggplot2::element_text(size=9),
-                            axis.title.x=ggplot2::element_text(size=9),
+          p1<-p_loops+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize),
+                            axis.title.x=ggplot2::element_text(size=fontSize),
                             axis.line.x=ggplot2::element_line(linewidth=1))
         }
 
@@ -1866,8 +2084,8 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
       }
 
       else {
-        p1<-gene_plot+ggplot2::theme(axis.text=ggplot2::element_text(size=9),
-                            axis.title.x=ggplot2::element_text(size=9),
+        p1<-gene_plot+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize),
+                            axis.title.x=ggplot2::element_text(size=fontSize),
                             axis.line.x=ggplot2::element_line(linewidth=1))
       }
 
@@ -1902,8 +2120,9 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
   }
 
   #put them together
+
   finalFigure <- patchwork::wrap_plots(list_all,ncol = 1, heights = size_all)+
-    patchwork:: plot_annotation(title = graphTitle,theme = ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size=9)))
+    patchwork:: plot_annotation(title = graphTitle,theme = ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size=fontSize)))
 
   if (saveFigure==TRUE) {
     if (substr(figureFormat,1,1)==".") {
@@ -1922,12 +2141,14 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
 #'
 #' @param plotList a list of outputs from plot_genomic_tracks
 #' @param plotOrder character vector specifying the order of each track, using the names you provided to plot_genomic_tracks
+#' @param fontSize a numeric for desired font size. Default is 9.
 #' @param saveFigure boolean, whether you want to save the final figure to a file. Default is FALSE.
 #' @param figureName if 'saveFigure' is TRUE, what you want the filename to be. Default is "trackDJ_figure"
 #' @param figureFormat if 'saveFigure' is TRUE, what format you want to save it as. Default is 'png'
 #' @return list of length two: figure (patchwork object with all tracks); singlePlots (list of ggplot objects of each individual track)
 #' @export
-trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", figureName="trackDJ_figure") {
+trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureFormat="png", figureName="trackDJ_figure") {
+  fontSize_text<-fontSize/ggplot2::.pt
   #see if plotOrder has "genome"
   if ("genome" %in% plotOrder==FALSE) {
     message("genome not found in plotOrder -- will not display genome")
@@ -2052,21 +2273,22 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
   for (plotName in plotOrder) {
     if (plotName %in% covData$displayNames) {
       data_plot<-covData[covData$displayNames==plotName,]
+      data_plot$displayNames<-factor(data_plot$displayNames, levels=plotName)
 
       if (unique(data_plot$logTransform)==FALSE){
         if (unique(data_plot$fillArea)==TRUE) {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-            ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+
-            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+
-            ggplot2::theme(axis.title.y=ggplot2::element_blank(),strip.text = ggplot2::element_text(size = 9))
+            ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+
+            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::scale_y_continuous(n.breaks=3)+
+            ggplot2::theme(axis.title.y=ggplot2::element_blank(),strip.text = ggplot2::element_text(size = fontSize),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
         else {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, xend=.data$end,y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-            ggplot2::facet_grid(ggplot2::vars(.data$displayNames)  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+
-            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+
-            ggplot2::theme(axis.title.y=ggplot2::element_blank(),strip.text = ggplot2::element_text(size = 9))
+            ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+
+            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::scale_y_continuous(n.breaks=3)+
+            ggplot2::theme(axis.title.y=ggplot2::element_blank(),strip.text = ggplot2::element_text(size = fontSize),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
 
       }
@@ -2076,16 +2298,16 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
         if (unique(data_plot$fillArea)==TRUE) {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-            ggplot2::facet_grid(ggplot2::vars(.data$displayNames)  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::theme(strip.text = ggplot2::element_text(size = 9))+
-            ggplot2::scale_y_continuous(trans='log2')+
-            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::theme(axis.title.y=ggplot2::element_blank())
+            ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::theme(strip.text = ggplot2::element_text(size = fontSize))+
+            ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+
+            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
         else {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, xend=.data$end, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-            ggplot2::facet_grid(ggplot2::vars(.data$displayNames)  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::theme(strip.text = ggplot2::element_text(size = 9))+
-            ggplot2::scale_y_continuous(trans='log2')+
-            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::theme(axis.title.y=ggplot2::element_blank())
+            ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::theme(strip.text = ggplot2::element_text(size = fontSize))+
+            ggplot2::scale_y_continuous(trans='log2', n.breaks=3)+
+            ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
 
       }
@@ -2103,7 +2325,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
         pCov$layers<-rast_layers
       }
 
-      list_single[[plotNum]]<-pCov+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
+      list_single[[plotNum]]<-pCov+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
       #if plot is not the last one, remove X axis
       if (plotName != plotOrder[length(plotOrder)] | plotName %in% peakData$displayNames | plotName %in% loopData$displayNames) {
         pCov<-pCov+ggplot2::theme(axis.title.x=ggplot2::element_blank(),
@@ -2113,7 +2335,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
 
       }
       else {
-        pCov<-pCov+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line.x=ggplot2::element_line(linewidth=1))
+        pCov<-pCov+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line.x=ggplot2::element_line(linewidth=1))
       }
 
       list_all[[plotNum]] <- pCov
@@ -2126,27 +2348,29 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
 
     if (plotName %in% peakData$displayNames) {
       data_plot<-peakData[peakData$displayNames==plotName,]
+      data_plot$displayNames<-factor(data_plot$displayNames, levels=plotName)
       pPeak<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, color=.data$colorNames)) +
         ggplot2::geom_segment(data=data_plot, ggplot2::aes(x=.data$start, xend=.data$end, y=1, yend=1,
                                          color=.data$colorNames),linewidth=3, lineend = "butt", linejoin = "mitre")+
         ggplot2::scale_color_identity()+ggplot2::theme_classic()+
         ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim=c(0,2))+
-        ggplot2::facet_grid(ggplot2::vars(.data$displayNames) ~ ., switch = "y", scales = "free_y")+
+        ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+
         ggplot2::xlab("Location (Mb)")+
         ggplot2::theme(axis.title.y = ggplot2::element_blank(),
               axis.text.y = ggplot2::element_blank(),
               axis.ticks.y = ggplot2::element_blank(),
-              axis.line.y = ggplot2::element_blank(),strip.text = ggplot2::element_text(size = 9))
+              axis.line.y = ggplot2::element_blank(),strip.text = ggplot2::element_text(size = fontSize),text = ggplot2::element_text(family = "Helvetica"))
+
 
       if (unique(data_plot$labelStrand) == TRUE) {
-        pPeak<-pPeak+ggplot2::geom_text(data=data_plot, ggplot2::aes(x=.data$midX, label=.data$strand, y=.data$graph_location), size=9, color="black", vjust = 0.5,size.unit = "pt")
+        pPeak<-pPeak+ggplot2::geom_text(data=data_plot, ggplot2::aes(x=.data$midX, label=.data$strand, y=.data$graph_location), size=fontSize_text, color="black", vjust = 0.5)
 
       }
 
       if (unique(data_plot$labelAllPeaks) == TRUE | unique(data_plot$labelSpecialPeaks)== TRUE) {
-        pPeak<-pPeak+ggrepel::geom_text_repel(data=data_plot, y=0.85, ggplot2::aes(x=.data$midX, label=.data$label), size=9, color="black", nudge_y=-0.2, direction="y", segment.size=0.5,size.unit = "pt")
+        pPeak<-pPeak+ggrepel::geom_text_repel(data=data_plot, y=0.85, ggplot2::aes(x=.data$midX, label=.data$label), size=fontSize_text, color="black", nudge_y=-0.2, direction="y", segment.size=0.5,na.rm = TRUE)
       }
-      list_single[[plotNum]]<-pPeak+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
+      list_single[[plotNum]]<-pPeak+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
       #if plot is not the last one, remove X axis
       if (plotName != plotOrder[length(plotOrder)]| plotName %in% loopData$displayNames) {
         pPeak<-pPeak+ggplot2::theme(axis.title.x=ggplot2::element_blank(),
@@ -2156,7 +2380,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
       }
 
       else {
-        pPeak<-pPeak+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line=ggplot2::element_line(linewidth=1))
+        pPeak<-pPeak+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line=ggplot2::element_line(linewidth=1))
       }
 
       list_all[[plotNum]] <- pPeak
@@ -2169,6 +2393,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
 
     if (plotName %in% loopData$displayNames) {
       data_plot<-loopData[loopData$displayNames==plotName,]
+      data_plot$displayNames<-factor(data_plot$displayNames, levels=plotName)
 
       if (unique(data_plot$y_min) == (-0.5)) {
         curvature=-0.5
@@ -2188,15 +2413,15 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
                          color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
         ggplot2::geom_segment(ggplot2::aes(x=.data$start2, xend=.data$end2, y=0, yend=0,
                          color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
-        ggplot2::scale_color_identity()+ggplot2::facet_grid(ggplot2::vars(.data$displayNames)  ~., switch="y", scales="free_y")+
+        ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames  ~., switch="y", scales="free_y")+
         ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
         ggplot2::coord_cartesian(xlim=c(plot_start, plot_end))+
         ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
                                                     axis.text.y=ggplot2::element_blank(),
                                                     axis.ticks.y=ggplot2::element_blank(),
                                                     axis.line.y=ggplot2::element_blank(),
-                                                    legend.position = "none",strip.text = ggplot2::element_text(size = 9))
-      list_single[[plotNum]]<-pLoop+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
+                                                    legend.position = "none",strip.text = ggplot2::element_text(size = fontSize),text = ggplot2::element_text(family = "Helvetica"))
+      list_single[[plotNum]]<-pLoop+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
 
       #if plot is not the last one, remove X axis
       if (plotName != plotOrder[length(plotOrder)]) {
@@ -2206,7 +2431,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
                            axis.text.x=ggplot2::element_blank())
       }
       else {
-        pLoop<-pLoop+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line=ggplot2::element_line(linewidth=1))
+        pLoop<-pLoop+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line=ggplot2::element_line(linewidth=1))
       }
       #rasterize loop plot if necessary
       if (unique(data_plot$rasterize)==TRUE) {
@@ -2239,13 +2464,13 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
                        data=final_geneData[final_geneData$type=="Gene",], linewidth=2.5, arrow=arrow_properties_gene, lineend = "butt",
                        linejoin = "mitre")+
           ggplot2::geom_label(color="black", fill="white",ggplot2::aes(x=.data$midX, y=.data$graph_location, label=.data$label),
-                     fontface = "italic",size = 9, size.unit = "pt")+
+                     fontface = "italic",size = fontSize_text)+
           ggplot2::xlim(plot_start, plot_end)+
           ggplot2::ylim(min(final_geneData$graph_location)-2,2)+ggplot2::theme_classic()+
           ggplot2::theme(axis.title.y = ggplot2::element_blank(),
                 axis.text.y = ggplot2::element_blank(),
                 axis.ticks.y = ggplot2::element_blank(),
-                axis.line.y = ggplot2::element_blank(), plot.margin=ggplot2::margin(t=7.5, r=5.5,b=7.5, l=5.5, unit="pt"))+
+                axis.line.y = ggplot2::element_blank(), plot.margin=ggplot2::margin(t=7.5, r=5.5,b=7.5, l=5.5, unit="pt"),text = ggplot2::element_text(family = "Helvetica"))+
           ggplot2::xlab("Location (Mb)")
       }
 
@@ -2258,18 +2483,18 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
                        linewidth=1.5, lineend = "butt", linejoin = "mitre")+
           ggplot2::geom_segment(data=final_geneData[final_geneData$type=="Gene",],ggplot2::aes(x=.data$start, xend=.data$end, y=.data$graph_location, yend=.data$graph_location),
                        linewidth=3, arrow=arrow_properties_gene, lineend = "butt", linejoin = "mitre")+
-          ggplot2::geom_text(data=final_geneData[final_geneData$type=="Transcript" & final_geneData$includeTxtNames==TRUE,], color="black", ggplot2::aes(x=.data$midX,y=.data$txt_label_loc, label=.data$label), size=9,size.unit = "pt")+
+          ggplot2::geom_text(data=final_geneData[final_geneData$type=="Transcript" & final_geneData$includeTxtNames==TRUE,], color="black", ggplot2::aes(x=.data$midX,y=.data$txt_label_loc, label=.data$label), size=fontSize_text)+
           ggplot2::geom_label(data=final_geneData[final_geneData$type=="Gene",],color="black", fill="white",ggplot2::aes(x=.data$midX, y=.data$graph_location, label=.data$label),
-                     fontface = "italic",size = 9, size.unit = "pt")+
+                     fontface = "italic",size = fontSize_text)+
           ggplot2::xlim(plot_start, plot_end)+
           ggplot2::ylim(min(final_geneData$graph_location)-2,2)+ggplot2::theme_classic()+
           ggplot2::theme(axis.title.y = ggplot2::element_blank(),
                 axis.text.y = ggplot2::element_blank(),
                 axis.ticks.y = ggplot2::element_blank(),
-                axis.line.y = ggplot2::element_blank())+
+                axis.line.y = ggplot2::element_blank(),text = ggplot2::element_text(family = "Helvetica"))+
           ggplot2::xlab("Location (Mb)")
       }
-      list_single[[plotNum]]<-pGene+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
+      list_single[[plotNum]]<-pGene+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
       #if plot is not the last one, remove X axis
       if (plotName != plotOrder[length(plotOrder)]) {
         pGene<-pGene+ggplot2::theme(axis.title.x=ggplot2::element_blank(),
@@ -2279,7 +2504,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
       }
 
       else {
-        pGene<-pGene+ggplot2::theme(axis.text=ggplot2::element_text(size=9), axis.title.x=ggplot2::element_text(size=9), axis.line=ggplot2::element_line(linewidth=1))
+        pGene<-pGene+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line=ggplot2::element_line(linewidth=1))
       }
 
       gene_scale<-(base::nrow(final_geneData[final_geneData$type=="Gene",])/2)+(base::nrow(final_geneData[final_geneData$type=="Transcript",])/4)
@@ -2301,7 +2526,7 @@ trackDJ<-function(plotList, plotOrder, saveFigure=FALSE, figureFormat="png", fig
   #put them together
   p1 <- patchwork::wrap_plots(list_all,ncol = 1, heights = size_all)+  patchwork::plot_annotation(
     title = graphTitle,
-    theme = ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size=9))
+    theme = ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size=fontSize))
   )
   if (length(unique(plotNames))!=length(plotNames)) {
     for (aName in unique(plotNames)) {

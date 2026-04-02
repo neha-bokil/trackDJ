@@ -15,7 +15,8 @@ plot_loops(
   specialLoops = NULL,
   specialLoopColors = NULL,
   minScore = NULL,
-  loop_orientation = "above"
+  loop_orientation = "above",
+  fontSize = 9
 )
 }
 \arguments{
@@ -40,6 +41,8 @@ plot_loops(
 \item{minScore}{numeric; any loops with scores lower than this will be thinner and more transparent, making the loops that pass this threshold more visible}
 
 \item{loop_orientation}{either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'}
+
+\item{fontSize}{a numeric for desired font size. Default is 9.}
 }
 \value{
 ggplot of loop tracks

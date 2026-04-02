@@ -14,7 +14,8 @@ plot_peaks(
   labelSpecialPeaks = FALSE,
   specialPeakColors = NULL,
   labelStrand = FALSE,
-  strandColors = NULL
+  strandColors = NULL,
+  fontSize = 9
 )
 }
 \arguments{
@@ -37,6 +38,8 @@ plot_peaks(
 \item{labelStrand}{boolean, set to TRUE if the strand of each peak should be indicated. assumes strand information is in the sixth column of a given .bed file}
 
 \item{strandColors}{character vector of length 2. First is the color for the + strand, the second is the color for the - strand. overrides 'peakTrackColors' but does NOT override 'specialPeakColors'}
+
+\item{fontSize}{a numeric for desired font size. Default is 9.}
 }
 \value{
 ggplot of peak tracks

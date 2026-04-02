@@ -7,6 +7,7 @@
 trackDJ(
   plotList,
   plotOrder,
+  fontSize = 9,
   saveFigure = FALSE,
   figureFormat = "png",
   figureName = "trackDJ_figure"
@@ -16,6 +17,8 @@ trackDJ(
 \item{plotList}{a list of outputs from plot_genomic_tracks}
 
 \item{plotOrder}{character vector specifying the order of each track, using the names you provided to plot_genomic_tracks}
+
+\item{fontSize}{a numeric for desired font size. Default is 9.}
 
 \item{saveFigure}{boolean, whether you want to save the final figure to a file. Default is FALSE.}
 

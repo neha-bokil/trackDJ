@@ -13,7 +13,8 @@ plot_coverage(
   ymax = NULL,
   fillArea = TRUE,
   logScale = FALSE,
-  rasterizePlot = FALSE
+  rasterizePlot = FALSE,
+  fontSize = 9
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ plot_coverage(
 \item{logScale}{boolean, set this to TRUE if you want data plotted on a log scale. Default is FALSE}
 
 \item{rasterizePlot}{boolean, set this to TRUE if you want to rasterize the coverage plot. This can be useful as coverage files can be rather large, and that can mess up the plot when you save it as a vector file. Default is FALSE}
+
+\item{fontSize}{a numeric for desired font size. Default is 9.}
 }
 \value{
 ggplot of coverage tracks

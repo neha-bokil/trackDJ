@@ -20,7 +20,8 @@ plot_gene(
   gene_symbol = "hgnc_symbol",
   includeNPC = FALSE,
   custom_anno = NULL,
-  upDown = c(2000, 2000)
+  upDown = c(2000, 2000),
+  fontSize = 9
 )
 }
 \arguments{
@@ -55,6 +56,8 @@ plot_gene(
 \item{custom_anno}{file path to a .gtf/.gff if using a custom annotation rather than ensembl}
 
 \item{upDown}{a character vector of length 2. if genomicLoc is a gene, how many base pairs upstream (first value) and downstream (second value) of the gene you want in your figure. Default is c(2000,2000)}
+
+\item{fontSize}{a numeric for desired font size. Default is 9.}
 }
 \value{
 list of length 2: figure (ggplot of gene models); genePlot (ggplot of gene models)
