@@ -283,8 +283,8 @@ The default annotation is the "hsapiens_gene_ensembl" ensembl set, but this can 
 k27me3_track<-c("/Volumes/page_human_data/neha/trackDJ_files/ENCFF727HQD.bigWig")
 mart_mm<-useMart("ensembl", dataset="mmusculus_gene_ensembl")
 
-k27me3_mouse<-plot_genomic_tracks(genomicLoc="G6pdx", includeTranscripts=TRUE,
-                                  covFiles=k27me3_coverageTracks_mouse, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",
+k27me3_mouse<-plot_genomic_tracks(genomicLoc="Hprt1", includeTranscripts=TRUE,
+                                  covFiles=k27me3_track, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",
                                   mart=mart_mm ,gene_symbol="mgi_symbol")
 
 print(k27me3_mouse$figure)
@@ -296,7 +296,7 @@ print(k27me3_mouse$figure)
 Alternatively, if you're not specifying the mart beforehand, you can instead change ```ensembl_set``` within ```plot_genomic_tracks```: 
 
 ```{r}
-k27me3_mouse<-plot_genomic_tracks(genomicLoc="G6pdx", includeTranscripts=TRUE,
+k27me3_mouse<-plot_genomic_tracks(genomicLoc="Hprt1", includeTranscripts=TRUE,
             covFiles=k27me3_coverageTracks_mouse, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",ymax=10, ensembl_set="mmusculus_gene_ensembl",gene_symbol="mgi_symbol")
 ```
 
