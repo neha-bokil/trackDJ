@@ -2132,7 +2132,7 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
 
     ggplot2::ggsave(filename=paste0(figureName,".",figureFormat), finalFigure, device=figureFormat, dpi=320,bg="transparent", width=30, height=size_total*3, units="cm")
   }
-  allPlots<-list(figure=finalFigure, coveragePlot=p_coverage, peakPlot=p_peaks, loopPlot=p_loops, genePlot=gene_plot, plotTitle=graphTitle)
+  allPlots<-list(plotTitle=graphTitle, coveragePlot=p_coverage, peakPlot=p_peaks, loopPlot=p_loops, genePlot=gene_plot,figure=finalFigure )
   return(allPlots)
 
 }
@@ -2545,7 +2545,7 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
     ggplot2::ggsave(filename=paste0(figureName,".",figureFormat), p1, device=figureFormat, dpi=320,bg="transparent", width=30, height=size_total*3, units="cm")
   }
 
-  return(list(figure=p1, singlePlots=list_single))
+  return(list(singlePlots=list_single,figure=p1))
 }
 
 

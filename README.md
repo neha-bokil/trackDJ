@@ -10,29 +10,25 @@ Ready to make tracks for your paper? Instead of screenshotting IGV, or uploading
 
 ## Installation
 
-This project requires the following R packages:
+You can install the development version of this package directly from GitHub. 
 
-* ggplot2
-* GenomicRanges
-* rtracklayer
-* biomaRt
-* patchwork
-* tools
-* data.table
-* ggrastr
-
-Clone the repository:
-```{}
-git clone https://gitea.wi.mit.edu/pagelab/trackDJ.git
-```
-Source the script (in R):
+First, make sure you have the ```remotes``` package installed and loaded:
 ```{r}
-source("trackDJ.R")
+install.packages("remotes")
+library(remotes)
+```
+Then install this package from GitHub:
+```{r}
+remotes::install_github("neha-bokil/trackDJ")
+```
+Finally, load the package:
+```{r}
+library(trackDJ)
 ```
 
-Additionally, if you'd like to try out the examples, you will need to download some files from ENCODE. I've provided a script to do so. In the command line, run:
+Optional: if you'd like to try out the examples, you will need to download some files from ENCODE. I've provided a script to do so. In the command line, run:
 ```{}
-./download_encode_files.sh ENCFF144MRB ENCFF405ZDL ENCFF188SZS ENCFF961SPZ ENCFF118PBQ ENCFF511QFN ENCFF470HOG ENCFF665RDD ENCFF727HQD
+./extraScripts/download_encode_files.sh ENCFF144MRB ENCFF405ZDL ENCFF188SZS ENCFF961SPZ ENCFF118PBQ ENCFF511QFN ENCFF470HOG ENCFF665RDD ENCFF727HQD
 
 gunzip ENCFF188SZS.bed.gz ENCFF961SPZ.bed.gz ENCFF118PBQ.bedpe.gz ENCFF511QFN.bedpe.gz
 ```
@@ -52,12 +48,13 @@ As input, you will need (at minimum):
         * ```mart```: if needed, this program will look up all of the annotation information for you; however, this takes time. Additionally, the ensembl server is sometimes down, in which case you'd need to set up a mirror. To get around this problem, you can provide a ```mart``` obtained by utilizing the ```useMart``` function, where you can specify the dataset and site. if making multiple plots, I highly recommend importing the mart first and then specifying it when you run the function--that way, it only has to be imported once. 
         * ```gene_symbol``` :nomenclature system you are using for genes (default="hgnc_symbol")
           * note that "hgnc_symbol" is for humans only. if ```ensembl_set``` is anything other than "hsapiens_gene_ensembl", the default is "external_gene_name". if you are using other nomenclature systems you must specify
-      * ```custom_anno```: file path to a .gtf/.gff if using a custom annotation rather than ensembl 
+      * ```custom_anno```: file path to a .gtf/.gff if using a custom annotation rather than ensembl.
+          * if you are making multiple plots, you can import the file once using the  ```import``` function in rtracklayer and pass the imported object as ```custom_anno```. This way, you won't be importing a large genome file every time you are making a new plot. 
 
 You'll also need any chromatin data you'd like to visualize (you do not need all three)
 
 * ```covFiles```: character vector containing a list of file paths to any coverage files (typically in bigWig or bedGraph format)
-  * minimum score can be set with ```ymin``` (default=0); maximum score can be set with ```ymax``` (default=1)
+  * minimum score can be set with ```ymin``` ; maximum score can be set with ```ymax``` 
 * ```peakFiles```: character vector containing a list of file paths to any peak files (.bed format)
 * ```loopFiles```: character vector containing a list of file paths to any contact/loop files (.bedpe format)
 
@@ -66,12 +63,12 @@ Run:
 myPlot<-plot_genomic_tracks(genomicLoc, covFiles, peakFiles, loopFiles)
 ```
 Running ```plot_genomic_tracks``` will return 6 total objects:
-* figure: patchwork plot with all tracks combined
+* plotTitle: title of the figure
 * coveragePlot: ggplot for the coverage tracks
 * peakPlot: ggplot for the peak tracks
 * loopPlot: ggplot for the loop tracks
 * genePlot: ggplot for the genome track
-* plotTitle: title of the figure
+* figure: patchwork plot with all tracks combined
 
 In addition to ```plot_genomic_tracks```, which keeps tracks of the same type together, there is a function called ```trackDJ``` that allows you to specify the order of each individual track in the figure. 
 
@@ -85,9 +82,9 @@ myPlot_ordered<-trackDJ(plotList, plotOrder)
 ```
 
 Running ```trackDJ``` returns the following:
-* figure: patchwork plot with all tracks combined in the order you specified
 * singlePlots: list of ggplot objects where each item is an individual track
   * within this list, each item is named as its track name that was provided in ```trackDJ```
+* figure: patchwork plot with all tracks combined in the order you specified
 
 Additional parameters, such as how to specify colors, labels, order, etc., are described in/after the examples.
 
@@ -98,7 +95,6 @@ These examples use data from the ENCODE project (https://www.encodeproject.org/)
 * ENCFF470HOG.bigWig; ENCFF665RDD.bigWig are coverage tracks from H3K27me3 ChIP-seq
 * ENCFF188SZS.bed; ENCFF188SZS.bed are peak calls from H3K4me3 ChIP-seq
 * ENCFF118PBQ.bedpe is a loop track from a CTCF ChIA-PET
-* ENCFF511QFN.bedpe is a loop track from a POL2RA ChIA-PET
 ```{r}
 
 # filepaths for coverage tracks (this will be our ```covFiles```)
@@ -111,7 +107,7 @@ k4me3_peakTracks<-c("ENCFF188SZS.bed","ENCFF961SPZ.bed")
 
 # filepaths for contact/loop tracks (this will be our ```loopFiles```)
 
-ctcf_pol2_loopTracks<-c("ENCFF118PBQ.bedpe","ENCFF511QFN.bedpe")
+ctcf_contactFiles<-"ENCFF118PBQ.bedpe"
 
 #optional: import mart
 # I highly recommend importing the mart first and then specifying it when you run the function--that way, it only has to be imported once rather than every single time you run plot_genomic_tracks for the same annotation. 
@@ -121,133 +117,112 @@ mart<-useMart("ensembl", dataset="hsapiens_gene_ensembl")
 
 #plot genomic tracks
 #let's plot ZFX
-
-zfx_plot<-plot_genomic_tracks(genomicLoc="ZFX", covFiles=k4me3_coverageTracks, ymax=500, peakFiles=k4me3_peakTracks, loopFiles=ctcf_pol2_loopTracks,mart=mart)
-
-print(zfx_plot$figure)
+```{r}
+zfx_plot1<-plot_genomic_tracks(genomicLoc="ZFX", mart=mart,
+                               covFiles = k4me3_coverageTracks, 
+                               peakFiles = k4me3_peakTracks,
+                               loopFiles = ctcf_contactFiles)
+print(zfx_plot1$figure)
 
 ```
-![Alt text](figures/ZFX_basic.png)
+![Alt text](figures/zfx_plot1.png)
 
 
-Colors and/or labels can be specified for each track:
+Colors and/or labels can be specified for each track, and loops under a provided score threshold can be made lighter:
 ```{r}
-zfx_plot_2<-plot_genomic_tracks(genomicLoc="ZFX", covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"),mart=mart)
+zfx_plot2<-plot_genomic_tracks(genomicLoc="ZFX", mart=mart, 
+                               covFiles =k4me3_coverageTracks, covTrackNames =c("H3K4me3_1","H3K4me3_2"), covTrackColors=c("palegreen2","green4"), 
+                               peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4") ,
+                               loopFiles=ctcf_contactFiles, loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
 
 print(zfx_plot_2$figure)
 
 ```
-![Alt text](figures/ZFX_color.png)
+![Alt text](figures/zfx_plot2.png)
 
 
 You can label and/or color specific peaks differently using ```specialPeaks```, ```labelSpecialPeaks```, and ```specialPeakColors```:
 ```{r}
-zfx_plot_3<-plot_genomic_tracks(genomicLoc="ZFX", covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"), labelSpecialPeaks = TRUE, specialPeaks=c("Peak_14307","Peak_6002"), specialPeakColors="goldenrod2",
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), mart=mart)
+zfx_plot3<-plot_genomic_tracks(genomicLoc="ZFX", mart=mart, 
+                               covFiles =k4me3_coverageTracks, covTrackNames =c("H3K4me3_1","H3K4me3_2"), covTrackColors=c("palegreen2","green4"), 
+                               peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4")  ,
+                               labelSpecialPeaks = TRUE, specialPeaks=c("Peak_14307","Peak_6002"), specialPeakColors="goldenrod2",
+                               loopFiles=ctcf_contactFiles, loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
 
 print(zfx_plot_3$figure)
 
 ```
 
-![Alt text](examplePlots/zfx_plot_3.png)
+![Alt text](figures/zfx_plot_3.png)
 
 
-You can make low-scoring loops lighter using ```minScore``` (if your .bedpe file has score information). You can also switch the orientation of your loops with ```loop_orientation```:
+You can plot transcripts by setting ```includeTranscripts=TRUE```: 
 
 ```{r}
-zfx_plot_4<-plot_genomic_tracks(genomicLoc="ZFX", covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), minScore=5,loop_orientation="below",mart=mart)
-
+zfx_plot4<-plot_genomic_tracks(genomicLoc="ZFX", mart=mart, includeTranscripts = TRUE,
+                               covFiles =k4me3_coverageTracks, covTrackNames =c("H3K4me3_1","H3K4me3_2"), covTrackColors=c("palegreen2","green4"), 
+                               peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4")  ,
+                               loopFiles=ctcf_contactFiles, loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
 print(zfx_plot_4$figure)
 ```
 
-![Alt text](examplePlots/zfx_plot_4.png)
-
-
-You can visualize transcripts using ```includeTranscripts```:
-```{r}
-zfx_plot_5<-plot_genomic_tracks(genomicLoc="ZFX", includeTranscripts=TRUE, covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), minScore=5,mart=mart)
-
-print(zfx_plot_5$figure)
-```
-
-![Alt text](examplePlots/zfx_plot_5.png)
+![Alt text](figures/zfx_plot_4.png)
 
 
 Note: if you only want to include specific transcripts, you can specify them with ```transcript_list```. Alternatively, if you only want to include the canonical transcript, set ```canonicalTranscriptOnly``` to TRUE. See the additional notes for more ways to filter transcripts. 
 
 Instead of a gene name, you can use coordinates:
 ```{r}
-coord_plot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), minScore=5,mart=mart)
-
-print(coord_plot$figure)
+coord_plot1<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), mart=mart, 
+                               covFiles =k4me3_coverageTracks, covTrackNames =c("H3K4me3_1","H3K4me3_2"), covTrackColors=c("palegreen2","green4"), 
+                               peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4")  ,
+                               loopFiles=ctcf_contactFiles,
+                               loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
+print(coord_plot1$figure)
 
 ```
 
-![Alt text](examplePlots/coord_plot.png)
+![Alt text](figures/coord_plot1.png)
 
 Okay, what if we want a different order?
 
-If you still want the same types of tracks (coverage, peaks, and loops) grouped together, you can use ```trackOrder_type``` in ```plot_genomic_tracks```
+If you still want the same types of tracks (coverage, peaks, and loops) grouped together, you can use ```trackOrder_type``` in ```plot_genomic_tracks```. You can also change the orientation of loops to be below the horizontal instead of above it:
 
 ```{r}
-coord_plot_2<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), minScore=5, loop_orientation="below",mart=mart, trackOrder_type=c("genome", "loops","peaks", "coverage"))
-
+coord_plot2<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), mart=mart, 
+                                 covFiles =k4me3_coverageTracks, covTrackNames =c("H3K4me3_1","H3K4me3_2"), covTrackColors=c("palegreen2","green4"), 
+                                 peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4")  ,
+                                 loopFiles=ctcf_contactFiles, loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5, loop_orientation = "below",
+                                 trackOrder_type = c("genome","loops","coverage","peaks"))
 print(coord_plot_2$figure)
 
 ```
 
-![Alt text](examplePlots/coord_plot_2.png)
+![Alt text](figures/coord_plot_2.png)
 
-
-What if we want to specify a different order where the tracks are not grouped by their track type? That's where ```trackDJ``` comes in. You can specify the order of the tracks with ```plotOrder```
-
-```{r}
-#make grouped plot with ```plot_genomic_tracks``` like we did before:
-coord_plot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), minScore=5,mart=mart)
-
-#use trackDJ to get the order you want:
-coord_plot_ordered<-trackDJ(plotList=coord_plot, plotOrder=c("H3K4me3_1","P1","CTCF","H3K4me3_2","P2","Pol2RA","genome"))
-
-print(coord_plot_ordered$figure)
-```
-![Alt text](examplePlots/coord_plot_ordered.png)
-
-
-Since ```plot_genomic_tracks``` requires all coverage tracks to have the same y-axis, ```trackDJ``` is also useful to put together coverage tracks of different scales.
+The ```trackDJ``` serves two purposes. 
+You can order the tracks one-by-one; they do not need to be grouped by their track type as they are in  ```plot_genomic_tracks ```. 
+Additionally, since  ```plot_genomics_tracks ``` plots all coverage tracks on the same level, you need to run it more than once if you are working with tracks of different scales.  ```trackDJ ``` can combine these into one figure. 
+You can specify the order of the tracks with ```plotOrder```
 
 ```{r}
-#let's say we have a different histone mark to add:
-k27me3_coverageTracks<-c("ENCFF470HOG.bigWig","ENCFF665RDD.bigWig")
+#make plots with ```plot_genomic_tracks``` like we did before:
+firstPlot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), mart=mart, 
+                                 covFiles =k4me3_coverageTracks, covTrackNames =c("H3K4me3_1","H3K4me3_2"), covTrackColors=c("palegreen2","green4"), 
+                                 peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4")  ,
+                                 loopFiles=ctcf_contactFiles,
+                                 loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
 
+secondPlot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), mart=mart, 
+                                covFiles =k27me3_coverageTracks, covTrackNames =c("H3K27me3_1","H3K27me3_2"), covTrackColors=c("pink","deeppink3"))
 
-#make grouped plot with ```plot_genomic_tracks``` like we did before, with the original tracks:
-coord_plot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), covFiles=k4me3_coverageTracks, covTrackNames=c("H3K4me3_1","H3K4me3_2") ,covTrackColors=c("#B2DF8A","#33A02C"), ymax=500, 
-peakFiles=k4me3_peakTracks, peakTrackNames=c("P1", "P2"), peakTrackColors=c("#B2DF8A","#33A02C"),
-loopFiles=ctcf_pol2_loopTracks, loopTrackNames=c("CTCF","Pol2RA"), loopTrackColors=c("blue", "deeppink3"), minScore=5,mart=mart)
+#put them all together with  ```trackDJ ```
+finalPlot<-trackDJ(plotList=list(firstPlot, secondPlot), plotOrder=c("H3K4me3_1","P1","H3K4me3_2","P2","H3K27me3_1","H3K27me3_2", "CTCF","genome"))
 
-coord_plot_k27me3<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), covFiles=k27me3_coverageTracks, covTrackNames=c("H3K27me3_1", "H3K27me3_2"), covTrackColors=c("mediumpurple3", "darkviolet"), ymax=8, mart=mart)
-
-#put them together with trackDJ:
-coord_plot_final<-trackDJ(plotList=list(coord_plot,coord_plot_k27me3), plotOrder=c("H3K4me3_1","P1","CTCF","H3K4me3_2","P2","Pol2RA", "H3K27me3_1", "H3K27me3_2", "genome"))
-
-print(coord_plot_final$figure)
-
-
+print(finalPlot$figure)
 ```
-![Alt text](examplePlots/coord_plot_final.png)
+![Alt text](figures/finalPlot.png)
+
 
 
 ## Additional (optional) parameters for each data type in ```plot_genomic_tracks```
@@ -258,6 +233,7 @@ print(coord_plot_final$figure)
   * ```ymin```: numeric, minimum value for y-axis (default=0)
   * ```ymax```: numeric, maximum value for y-axis (default=1)
   * ```logScale```: boolean, set this to TRUE if you want data plotted on a log scale (default=FALSE)
+  * ```fillArea```: boolean, switch this to FALSE if you don't want your coverage plot to be filled in with color (default=TRUE)
   * ```rasterizeCovPlot```: boolean, set this to TRUE if you want to rasterize the coverage plot. This can be useful as coverage files can be rather large, and that can mess up the plot when you save it as an .svg file. (default=FALSE)
  
 * for peak tracks:
@@ -304,21 +280,24 @@ print(coord_plot_final$figure)
 
 The default annotation is the "hsapiens_gene_ensembl" ensembl set, but this can be changed. for example, if you're working with mouse data, you can switch to "mmusculus_gene_ensembl". For example, if you'd like to plot the mouse H3K27me3 coverage track ENCFF727HQD.bigWig:
 ```{r}
-k27me3_coverageTracks_mouse<-c("ENCFF727HQD.bigWig")
+k27me3_track<-c("/Volumes/page_human_data/neha/trackDJ_files/ENCFF727HQD.bigWig")
 mart_mm<-useMart("ensembl", dataset="mmusculus_gene_ensembl")
 
-k27me3_mouse<-plot_genomic_tracks(genomicLoc="G6pdx", includeTranscripts=TRUE,covFiles=k27me3_coverageTracks_mouse, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",ymax=10, mart=mart_mm ,gene_symbol="mgi_symbol")
+k27me3_mouse<-plot_genomic_tracks(genomicLoc="G6pdx", includeTranscripts=TRUE,
+                                  covFiles=k27me3_coverageTracks_mouse, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",
+                                  mart=mart_mm ,gene_symbol="mgi_symbol")
 
 print(k27me3_mouse$figure)
 
 ```
 
-![Alt text](examplePlots/k27me3_mouse.png)
+![Alt text](figures/k27me3_mouse.png)
 
 Alternatively, if you're not specifying the mart beforehand, you can instead change ```ensembl_set``` within ```plot_genomic_tracks```: 
 
 ```{r}
-k27me3_mouse<-plot_genomic_tracks(genomicLoc="G6pdx", covFiles=k27me3_coverageTracks_mouse, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",ymax=10, ensembl_set="mmusculus_gene_ensembl",gene_symbol="mgi_symbol")
+k27me3_mouse<-plot_genomic_tracks(genomicLoc="G6pdx", includeTranscripts=TRUE,
+            covFiles=k27me3_coverageTracks_mouse, covTrackNames=c("H3K27me3_mouse"), covTrackColors="mediumpurple3",ymax=10, ensembl_set="mmusculus_gene_ensembl",gene_symbol="mgi_symbol")
 ```
 
 ## Saving figures:
@@ -328,9 +307,10 @@ In both ```plot_genomic_tracks``` and ```trackDJ```:
   * ```figureName```: what you want the file to be named (default="plot_genomic_tracks_figure" if running ```plot_genomic_tracks``` ; default="trackDJ_figure" if running ```trackDJ```)
 
 ## Further Customization
-Both ```plot_genomic_tracks``` and ```trackDJ``` provide individual ggplot objects in addition to the combined patchwork object. If you'd like to change the formatting, you can take the individual ggplot objects and format them as you would with any other ggplot, and then you can combine them yourself with patchwork if you'd like. 
+Both ```plot_genomic_tracks``` and ```trackDJ``` allow you to specify a font size as ```fontSize ```, in case you'd like to make the text bigger or smaller. 
+Addtionally, both functions provide individual ggplot objects in addition to the combined patchwork object. If you'd like to change the formatting, you can take the individual ggplot objects and format them as you would with any other ggplot, and then you can combine them yourself with patchwork if you'd like. 
 
 ## Support
 
-Email Neha (nbokil@wi.mit.edu)
+Email Neha (nbokil@alum.mit.edu)
 
