@@ -198,7 +198,7 @@ print(coord_plot_2$figure)
 
 ```
 
-![Alt text](figures/coord_plot_2.png)
+![Alt text](figures/coord_plot2.png)
 
 The ```trackDJ``` serves two purposes. 
 You can order the tracks one-by-one; they do not need to be grouped by their track type as they are in  ```plot_genomic_tracks ```. 
