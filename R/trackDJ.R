@@ -583,7 +583,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
               axis.ticks.y = ggplot2::element_blank(),
               axis.line.y = ggplot2::element_blank(),
               plot.title = ggplot2::element_text(hjust = 0.5))+
-        ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))
+        ggplot2::xlab("Location (Mb)")
     }
     else { #no genes in region - blank plot
       gene_annot<-data.frame(chromosome_name=chr, start=as.numeric(start)/1000000, end=as.numeric(end)/1000000, gene_id=NA, strand=NA,
@@ -595,7 +595,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
               axis.ticks.y = ggplot2::element_blank(),
               axis.line.y = ggplot2::element_blank(),
               plot.title = ggplot2::element_text(hjust = 0.5))+
-        ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))
+        ggplot2::xlab("Location (Mb)")
 
     }
 
@@ -1102,7 +1102,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
               axis.ticks.y = ggplot2::element_blank(),
               axis.line.y = ggplot2::element_blank(),
               plot.title = ggplot2::element_text(hjust = 0.5))+
-        ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))
+        ggplot2::xlab("Location (Mb)")
 
       if (includeTxtNames==TRUE) {
         p1<-p1+ggplot2::geom_text(data=allInfo[allInfo$type=="Transcript",], color="black", ggplot2::aes(x=.data$midX,y=.data$txt_label_loc, label=.data$label), size=fontSize_text)
@@ -1121,7 +1121,7 @@ plot_gene<-function(genomicLoc, includeTranscripts=FALSE,includeTxtNames = TRUE,
               axis.ticks.y = ggplot2::element_blank(),
               axis.line.y = ggplot2::element_blank(),
               plot.title = ggplot2::element_text(hjust = 0.5))+
-        ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))
+        ggplot2::xlab("Location (Mb)")
 
     }
   }
@@ -1266,7 +1266,7 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
         ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
         ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
         ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize), axis.text.y=ggplot2::element_text(size=fontSize))+
-        ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+ggplot2::scale_x_continuous(expand=c(0,0))+
+        ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+
         ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize))
     }
     else {
@@ -1274,7 +1274,7 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
         ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
         ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
         ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize), axis.text.y=ggplot2::element_text(size=fontSize))+
-        ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+ggplot2::scale_x_continuous(expand=c(0,0))+
+        ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+
         ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize))
     }
 
@@ -1290,13 +1290,13 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
       p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames,group = .data$colorNames)) +
         ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
         ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+
-        ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))+
+        ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
         ggplot2::scale_y_continuous(n.breaks = 3)+ggplot2::coord_cartesian(xlim = c(start_num/1000000, end_num/1000000), ylim = c(ymin, ymax))+
         ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize),axis.text.x=ggplot2::element_text(size=fontSize),plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize))
     }
     else {
       p1<-ggplot2::ggplot(allSamples, ggplot2::aes(x = .data$start, xend=.data$end, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
-        ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+ggplot2::scale_x_continuous(expand=c(0,0))+
+        ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
         ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
         ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5),strip.text = ggplot2::element_text(size = fontSize),axis.text.y=ggplot2::element_text(size=fontSize))+ggplot2::scale_y_continuous(n.breaks = 3)+
         ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim = c(ymin, ymax))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize))
@@ -1509,7 +1509,7 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
                                       color=.data$colorNames),linewidth=3, lineend = "butt", linejoin = "mitre")+
       ggplot2::scale_color_identity()+ggplot2::theme_classic()+
       ggplot2::coord_cartesian(xlim = c(min(as.numeric(start),as.numeric(end))/1000000, max(as.numeric(start),as.numeric(end))/1000000), ylim=c(0,2))+
-      ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+ggplot2::scale_x_continuous(expand=c(0,0))+
+      ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y", drop=FALSE)+
       ggplot2::ggtitle(graphTitle)+ggplot2::xlab("Location (Mb)")+
       ggplot2::theme(axis.title.y = ggplot2::element_blank(),
             axis.text.y = ggplot2::element_blank(),
@@ -1722,7 +1722,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
                      color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
     ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames ~., switch="y", scales="free_y", drop=FALSE)+
     ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
-    ggplot2::coord_cartesian(xlim=c(as.numeric(start)/1000000, as.numeric(end)/1000000))+ggplot2::scale_x_continuous(expand=c(0,0))+
+    ggplot2::coord_cartesian(xlim=c(as.numeric(start)/1000000, as.numeric(end)/1000000))+
     ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
                                                 axis.text.y=ggplot2::element_blank(),
                                                 axis.ticks.y=ggplot2::element_blank(),
@@ -2279,14 +2279,14 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
         if (unique(data_plot$fillArea)==TRUE) {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-            ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))+
+            ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+
             ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::scale_y_continuous(n.breaks=3)+
             ggplot2::theme(axis.title.y=ggplot2::element_blank(),strip.text = ggplot2::element_text(size = fontSize),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
         else {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, xend=.data$end,y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
-            ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))+
+            ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+
             ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::scale_y_continuous(n.breaks=3)+
             ggplot2::theme(axis.title.y=ggplot2::element_blank(),strip.text = ggplot2::element_text(size = fontSize),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
@@ -2299,14 +2299,14 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_line() + ggplot2::geom_area()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
             ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::theme(strip.text = ggplot2::element_text(size = fontSize))+
-            ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+ggplot2::scale_x_continuous(expand=c(0,0))+
+            ggplot2::scale_y_continuous(trans='log2',n.breaks = 3)+
             ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
         else {
           pCov<-ggplot2::ggplot(data_plot, ggplot2::aes(x = .data$start, xend=.data$end, y = .data$score, color=.data$colorNames, fill=.data$colorNames)) +
             ggplot2::geom_segment()+ggplot2::scale_color_identity()+ggplot2::scale_fill_identity()+ggplot2::theme_classic()+
             ggplot2::facet_grid(displayNames  ~ ., switch = "y", scales = "free_y")+ggplot2::xlab("Location (Mb)")+ggplot2::theme(strip.text = ggplot2::element_text(size = fontSize))+
-            ggplot2::scale_y_continuous(trans='log2', n.breaks=3)+ggplot2::scale_x_continuous(expand=c(0,0))+
+            ggplot2::scale_y_continuous(trans='log2', n.breaks=3)+
             ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim = c(min(data_plot$ymin), max(data_plot$ymax)))+ggplot2::theme(axis.title.y=ggplot2::element_blank(),axis.text.y=ggplot2::element_text(size=fontSize),text = ggplot2::element_text(family = "Helvetica"))
         }
 
@@ -2355,7 +2355,7 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
         ggplot2::scale_color_identity()+ggplot2::theme_classic()+
         ggplot2::coord_cartesian(xlim = c(plot_start, plot_end), ylim=c(0,2))+
         ggplot2::facet_grid(displayNames ~ ., switch = "y", scales = "free_y")+
-        ggplot2::xlab("Location (Mb)")+ggplot2::scale_x_continuous(expand=c(0,0))+
+        ggplot2::xlab("Location (Mb)")+
         ggplot2::theme(axis.title.y = ggplot2::element_blank(),
               axis.text.y = ggplot2::element_blank(),
               axis.ticks.y = ggplot2::element_blank(),
@@ -2414,7 +2414,7 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
         ggplot2::geom_segment(ggplot2::aes(x=.data$start2, xend=.data$end2, y=0, yend=0,
                          color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
         ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames  ~., switch="y", scales="free_y")+
-        ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+ggplot2::scale_x_continuous(expand=c(0,0))+
+        ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
         ggplot2::coord_cartesian(xlim=c(plot_start, plot_end))+
         ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
                                                     axis.text.y=ggplot2::element_blank(),
@@ -2465,7 +2465,7 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
                        linejoin = "mitre")+
           ggplot2::geom_label(color="black", fill="white",ggplot2::aes(x=.data$midX, y=.data$graph_location, label=.data$label),
                      fontface = "italic",size = fontSize_text)+
-          ggplot2::xlim(plot_start, plot_end)+ggplot2::scale_x_continuous(expand=c(0,0))+
+          ggplot2::xlim(plot_start, plot_end)+
           ggplot2::ylim(min(final_geneData$graph_location)-2,2)+ggplot2::theme_classic()+
           ggplot2::theme(axis.title.y = ggplot2::element_blank(),
                 axis.text.y = ggplot2::element_blank(),
@@ -2486,7 +2486,7 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
           ggplot2::geom_text(data=final_geneData[final_geneData$type=="Transcript" & final_geneData$includeTxtNames==TRUE,], color="black", ggplot2::aes(x=.data$midX,y=.data$txt_label_loc, label=.data$label), size=fontSize_text)+
           ggplot2::geom_label(data=final_geneData[final_geneData$type=="Gene",],color="black", fill="white",ggplot2::aes(x=.data$midX, y=.data$graph_location, label=.data$label),
                      fontface = "italic",size = fontSize_text)+
-          ggplot2::xlim(plot_start, plot_end)+ggplot2::scale_x_continuous(expand=c(0,0))+
+          ggplot2::xlim(plot_start, plot_end)+
           ggplot2::ylim(min(final_geneData$graph_location)-2,2)+ggplot2::theme_classic()+
           ggplot2::theme(axis.title.y = ggplot2::element_blank(),
                 axis.text.y = ggplot2::element_blank(),
