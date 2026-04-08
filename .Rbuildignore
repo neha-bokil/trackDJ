@@ -1,3 +1,6 @@
 ^trackDJ\.Rproj$
 ^\.Rproj\.user$
 ^LICENSE\.md$
+^figures/
+^extraScripts/
+^encodeFiles/
