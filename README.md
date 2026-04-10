@@ -111,7 +111,7 @@ ctcf_contactFiles<-"ENCFF118PBQ.bedpe"
 
 #optional: import mart
 # I highly recommend importing the mart first and then specifying it when you run the function--that way, it only has to be imported once rather than every single time you run plot_genomic_tracks for the same annotation. 
-
+library(biomaRt) 
 mart<-useMart("ensembl", dataset="hsapiens_gene_ensembl")
 
 

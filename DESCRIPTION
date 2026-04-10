@@ -20,6 +20,7 @@ Imports:
     IRanges,
     methods,
     patchwork,
+    ragg,
     rlang,
     rtracklayer,
     S4Vectors,
