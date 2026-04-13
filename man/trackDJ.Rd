@@ -27,7 +27,7 @@ trackDJ(
 \item{figureName}{if 'saveFigure' is TRUE, what you want the filename to be. Default is "trackDJ_figure"}
 }
 \value{
-list of length two: figure (patchwork object with all tracks); singlePlots (list of ggplot objects of each individual track)
+list of length two: singlePlots (list of ggplot objects of each individual track); figure (patchwork object with all tracks)
 }
 \description{
 rearrange outputs from plot_genomic_tracks in the desired order

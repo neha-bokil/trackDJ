@@ -1806,7 +1806,7 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
 #' @param saveFigure boolean, whether you want to save the final figure to a file. Default is FALSE.
 #' @param figureName if 'saveFigure' is TRUE, what you want the filename to be. Default is "plot_genomic_tracks_figure"
 #' @param figureFormat if 'saveFigure' is TRUE, what format you want to save it as. Default is 'png'
-#' @return list of length 6: figure (patchwork object with all tracks); coveragePlot (ggplot of coverage tracks); peakPlot (ggplot of peak tracks); loopPlot (ggplot of loop tracks); genePlot (ggplot of gene/transcript models); plotTitle (title of plot)
+#' @return list of length 6: plotTitle (title of plot); coveragePlot (ggplot of coverage tracks); peakPlot (ggplot of peak tracks); loopPlot (ggplot of loop tracks); genePlot (ggplot of gene/transcript models); figure (patchwork object with all tracks);
 #' @export
 
 
@@ -2145,7 +2145,7 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
 #' @param saveFigure boolean, whether you want to save the final figure to a file. Default is FALSE.
 #' @param figureName if 'saveFigure' is TRUE, what you want the filename to be. Default is "trackDJ_figure"
 #' @param figureFormat if 'saveFigure' is TRUE, what format you want to save it as. Default is 'png'
-#' @return list of length two: figure (patchwork object with all tracks); singlePlots (list of ggplot objects of each individual track)
+#' @return list of length two: singlePlots (list of ggplot objects of each individual track); figure (patchwork object with all tracks)
 #' @export
 trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureFormat="png", figureName="trackDJ_figure") {
   fontSize_text<-fontSize/ggplot2::.pt

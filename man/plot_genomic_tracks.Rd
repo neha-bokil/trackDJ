@@ -159,7 +159,7 @@ plot_genomic_tracks(
 \item{figureFormat}{if 'saveFigure' is TRUE, what format you want to save it as. Default is 'png'}
 }
 \value{
-list of length 6: figure (patchwork object with all tracks); coveragePlot (ggplot of coverage tracks); peakPlot (ggplot of peak tracks); loopPlot (ggplot of loop tracks); genePlot (ggplot of gene/transcript models); plotTitle (title of plot)
+list of length 6: plotTitle (title of plot); coveragePlot (ggplot of coverage tracks); peakPlot (ggplot of peak tracks); loopPlot (ggplot of loop tracks); genePlot (ggplot of gene/transcript models); figure (patchwork object with all tracks);
 }
 \description{
 plot gene models, coverage tracks, peaks, and/or loops across region of interest
