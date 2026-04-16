@@ -2772,40 +2772,191 @@ assign_y_levels_genes<-function(df) {
 
 
 assign_y_levels_transcripts<-function(df) {
-  df<-df[,colnames(df) != "graph_location"]
   chrName<-unique(df[,1])
-  gene_df<-df[df$type=="Gene",]
+  genes_df<-df[df$type=="Gene",]
+  plottedSegments<-data.frame(start=min(genes_df[1,]$start, genes_df[1,]$end), end=max(genes_df[1,]$start, genes_df[1,]$end), loc=0)
+  totalRows<-nrow(df)
+  if (totalRows==1) {
+    df$graph_location<-0
+  }
+  else {
+    allGenes<-df[df$type=="Gene",]$geneName
+    for (geneNum in 1:length(allGenes)) {
+      gene<-allGenes[geneNum]
+      geneStart<-min(df[df$type=="Gene" & df$geneName==gene,]$start, df[df$type=="Gene" & df$geneName==gene,]$end)
+      geneEnd<-max(df[df$type=="Gene" & df$geneName==gene,]$start, df[df$type=="Gene" & df$geneName==gene,]$end)
 
-  geneLevels<-assign_y_levels_genes(gene_df)
+      txt_df<-df[df$type=="Transcript" & df$geneName==gene,]
+      #get coordinate for gene
+      if (gene==genes_df[1,]$geneName) {
+        df$graph_location[df$type=="Gene" & df$geneName==gene]<-0
+        transcriptLoc<-0
+        for (txtName in unique(txt_df$transcriptName)) {
+          transcriptLoc<-transcriptLoc-1.5
+          df$graph_location[df$type=="Transcript"& df$transcriptName==txtName]<-transcriptLoc
+          txtStart<-min(df[df$type=="Transcript"& df$transcriptName==txtName,]$start, df[df$type=="Transcript"& df$transcriptName==txtName,]$end)
+          txtEnd<-max(df[df$type=="Transcript"& df$transcriptName==txtName,]$start, df[df$type=="Transcript"& df$transcriptName==txtName,]$end)
+          newSegment<-data.frame(start=txtStart, end=txtEnd, loc=transcriptLoc)
+          plottedSegments<-rbind(plottedSegments, newSegment)
+        }
+      }
+      else {
+        if (geneNum %% 2 !=0) {
+          geneLoc<-(-3)
+
+          #get graph loc for gene
+
+          #see if anything else is already plotted here
+          plottedLoc<-plottedSegments[plottedSegments$loc==geneLoc,]
+          if (nrow(plottedLoc)==0) {
+            df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+            newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+            plottedSegments<-rbind(plottedSegments, newSegment)
+          }
+          else { #see if whatever is already plotted has an overlap with the gene
+            segList_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=min(plottedLoc$start, plottedLoc$end), end=max(plottedLoc$start, plottedLoc$end)))
+            new_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=geneStart, end=geneEnd))
+            hits<-GenomicRanges::findOverlaps(segList_gr, new_gr)
+
+            if (length(hits)==0) {
+              df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+              newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+              plottedSegments<-rbind(plottedSegments, newSegment)
+            }
+
+            else { #try graph location 0
+              geneLoc<-0
+              plottedLoc<-plottedSegments[plottedSegments$loc==0,]
+              segList_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=min(plottedLoc$start, plottedLoc$end), end=max(plottedLoc$start, plottedLoc$end)))
+              new_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=geneStart, end=geneEnd))
+              hits<-GenomicRanges::findOverlaps(segList_gr, new_gr)
+              if (length(hits)==0) {
+                df$graph_location[df$type=="Gene" & df$geneName==gene]<-0
+                newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=0)
+                plottedSegments<-rbind(plottedSegments, newSegment)
+              }
+              else {
+                geneLoc<-(-3)
+                assigned<-FALSE
+                while (assigned==FALSE) {
+                  geneLoc<-geneLoc-3
+
+                  plottedLoc<-plottedSegments[plottedSegments$loc==geneLoc,]
+                  if (nrow(plottedLoc)==0) {
+                    df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+                    newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+                    plottedSegments<-rbind(plottedSegments, newSegment)
+                    assigned<-TRUE
+                  }
+                  else {
+                    segList_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=min(plottedLoc$start, plottedLoc$end), end=max(plottedLoc$start, plottedLoc$end)))
+                    new_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=geneStart, end=geneEnd))
+                    hits<-GenomicRanges::findOverlaps(segList_gr, new_gr)
+                    if (length(hits)==0) {
+                      newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+
+                      plottedSegments<-rbind(plottedSegments, newSegment)
 
 
-  newDf<-geneLevels
+                      df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+                      assigned<-TRUE
+                    }
 
-  for (geneName in geneLevels$geneName) {
-    loc<-unique(geneLevels[geneLevels$geneName==geneName,]$graph_location)
+                  }
+                }
+              }
 
-    txt_df<-df[df$geneName==geneName & df$type=="Transcript",]
+            }
 
-    if (nrow(txt_df)>0) {
-      for (a in 1:nrow(txt_df)) {
-        loc<-loc-1.5
-        singleTxt<-txt_df[a,]
-        singleTxt$graph_location<-loc
-
-
-        newDf<-rbind(newDf, singleTxt)
-
-        txtName<-singleTxt$transcriptName
+          }
 
 
-        exon_df<-df[df$type=="Exon" & df$transcriptName==txtName,]
-        exon_df$graph_location<-loc
-        newDf<-rbind(newDf, exon_df)
+        }
+
+        else {
+          #start with location 0
+          geneLoc<-0
+          plottedLoc<-plottedSegments[plottedSegments$loc==geneLoc,]
+          segList_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=min(plottedLoc$start, plottedLoc$end), end=max(plottedLoc$start, plottedLoc$end)))
+          new_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=geneStart, end=geneEnd))
+          hits<-GenomicRanges::findOverlaps(segList_gr, new_gr)
+          if (length(hits)==0) {
+            df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+            newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+            plottedSegments<-rbind(plottedSegments, newSegment)
+
+          }
+          else {
+            assigned<-FALSE
+            while (assigned==FALSE) {
+              geneLoc<-geneLoc-3
+              plottedLoc<-plottedSegments[plottedSegments$loc==geneLoc,]
+
+              if (nrow(plottedLoc)==0) {
+                df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+                newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+                plottedSegments<-rbind(plottedSegments, newSegment)
+                assigned<-TRUE
+              }
+              else {
+                segList_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=min(plottedLoc$start, plottedLoc$end), end=max(plottedLoc$start, plottedLoc$end)))
+                new_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=geneStart, end=geneEnd))
+                hits<-GenomicRanges::findOverlaps(segList_gr, new_gr)
+                if (length(hits)==0) {
+                  df$graph_location[df$type=="Gene" & df$geneName==gene]<-geneLoc
+                  newSegment<-data.frame(start=genes_df[genes_df$geneName==gene,]$start, end=genes_df[genes_df$geneName==gene,]$end, loc=geneLoc)
+                  plottedSegments<-rbind(plottedSegments, newSegment)
+                  assigned<-TRUE
+                }
+              }
+
+
+            }
+          }
+
+        }
+        transcriptLoc<-geneLoc
+        for (txtName in unique(txt_df$transcriptName)) {
+          txtStart<-min(df[df$type=="Transcript"& df$transcriptName==txtName,]$start,df[df$type=="Transcript"& df$transcriptName==txtName,]$end)
+          txtEnd<-max(df[df$type=="Transcript"& df$transcriptName==txtName,]$start,df[df$type=="Transcript"& df$transcriptName==txtName,]$end)
+          assigned<-FALSE
+          while (assigned==FALSE) {
+            transcriptLoc<-transcriptLoc-1.5
+            plottedLoc<-plottedSegments[plottedSegments$loc==transcriptLoc,]
+            if (nrow(plottedLoc)==0) {
+
+              df$graph_location[df$type=="Transcript"& df$transcriptName==txtName]<-transcriptLoc
+              txtStart<-min(df[df$type=="Transcript"& df$transcriptName==txtName,]$start,df[df$type=="Transcript"& df$transcriptName==txtName,]$end )
+              txtEnd<-max(df[df$type=="Transcript"& df$transcriptName==txtName,]$start,df[df$type=="Transcript"& df$transcriptName==txtName,]$end )
+              newSegment<-data.frame(start=txtStart, end=txtEnd, loc=transcriptLoc)
+              plottedSegments<-rbind(plottedSegments, newSegment)
+              assigned<-TRUE
+            }
+            else {
+              segList_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=min(plottedLoc$start, plottedLoc$end), end=max(plottedLoc$start, plottedLoc$end)))
+              new_gr<-GenomicRanges::GRanges(seqnames=chrName, ranges=IRanges::IRanges(start=txtStart, end=txtEnd))
+              hits<-GenomicRanges::findOverlaps(segList_gr, new_gr)
+
+              if (length(hits)==0) {
+                df$graph_location[df$type=="Transcript"& df$transcriptName==txtName]<-transcriptLoc
+                newSegment<-data.frame(start=txtStart, end=txtEnd, loc=transcriptLoc)
+                plottedSegments<-rbind(plottedSegments, newSegment)
+                assigned<-TRUE
+              }
+
+            }
+          }
+        }
+
       }
     }
 
+    for (txtName in unique(df[df$type=="Transcript",]$transcriptName)) {
+      exonLoc<-unique(df[df$type=="Transcript" & df$transcriptName==txtName,]$graph_location)
+      df$graph_location[df$type=="Exon" & df$transcriptName==txtName]<-exonLoc
+    }
   }
-  return(newDf)
+  return(df)
 }
 
 
