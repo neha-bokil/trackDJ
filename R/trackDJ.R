@@ -1552,47 +1552,46 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
 #' @param specialLoopColors character vector containing the color(s) you want to give your special loops. requires 'specialLoops' to be specified
 #' @param loop_orientation either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'
 #' @param fontSize a numeric for desired font size. Default is 9.
+#' @param minHeightFrac sets minimum loop height relative to full plot. Default is 0.15
+#' @param maxHeightFrac sets maximum loop height reltaive to full plot. Default is 0.9
+#' @param capMultiplier Caps the distance (as a multiple of the viewing window width) used to shape arcs for loops with an off-screen anchor, so distant anchors don't produce a flattened-looking curve. Default is 2.
+#' @param nArcPoints number of points used to draw each loop's arc; higher values give smoother curves at a small performance cost. Default is 30.
 #' @return ggplot of loop tracks
 
 plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
                      loopTrackColors="black", lineSize=0.8, alpha=0.8,rasterizePlot=FALSE,
-                     specialLoops=NULL, specialLoopColors=NULL, minScore=NULL, loop_orientation="above", fontSize=9) {
+                     specialLoops=NULL, specialLoopColors=NULL, minScore=NULL, loop_orientation="above", fontSize=9,
+                     minHeightFrac=0.15, maxHeightFrac=0.9, nArcPoints=30, capMultiplier=2) {
   if (length(genomicLoc) != 3) {
     stop("error in plot_loops: please provide genomic coordinates")
   }
-
   if (is.null(loopTrackNames)==FALSE & length(loopTrackNames) != length(loopFiles)) {
     stop("error: number of loop files is not equal to the number of loop names")
   }
-
   if (is.null(loopTrackNames)) {
     numberOfTracks<-1:length(loopFiles)
     loopTrackNames<-paste0("Loops_", numberOfTracks)
   }
-
   else {
     if (length(loopTrackNames) != length(loopFiles)) {
       stop("error: number of loop files is not equal to the number of names provided")
     }
   }
-
   if (length(loopTrackColors) != 1 & length(loopTrackColors) !=length(loopFiles)) {
     stop("error: number of loop files is not equal to the number of loop colors")
   }
-
   chr<-genomicLoc[1]
   if (grepl("chr",chr)==TRUE) {
     chr<-substr(chr, 4, nchar(chr))
   }
   start<-as.numeric(genomicLoc[2])
   end<-as.numeric(genomicLoc[3])
-
   graphTitle<-paste0("chr",chr,":",start,"-",end)
+  viewWidthMb<-max((end-start)/1e6, 1e-6)  # guard against 0-width windows
 
   #read in loop files
   allLoops<-data.frame()
   for (sampleLoops in loopFiles) {
-
     if (is.data.frame(sampleLoops)==FALSE) {
       if (file.exists(sampleLoops)==FALSE) {
         message(paste0("error: ", sampleLoops, " loop file not found. skipping ..."))
@@ -1605,7 +1604,6 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
     else {
       loops<-sampleLoops
     }
-
     if (ncol(loops)>6) {
       if (is.numeric(loops[,7])) {
         names(loops)[7]<-"score"
@@ -1613,7 +1611,6 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
       else {
         names(loops)[7]<-"name"
       }
-
       if (ncol(loops)>7) {
         if (is.numeric(loops[,8])) {
           names(loops)[8]<-"score"
@@ -1623,7 +1620,6 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
         }
       }
     }
-
     if ("score" %in% colnames(loops)==FALSE) {
       loops$score<-NA
     }
@@ -1631,16 +1627,18 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
       loops$name<-""
     }
     loops<-loops[,c("chrom1","start1","end1","chrom2","start2","end2","name","score")]
-
     #keep only loops on the chromosome of interest
+
     loops<-loops[(loops$chrom1 == chr | loops$chrom1 ==paste0("chr",chr)) &
                    (loops$chrom2 == chr | loops$chrom2 ==paste0("chr",chr)),]
-    loops$displayNames<-NA
 
+    loops<-loops[(as.numeric(loops$start1) <= end & as.numeric(loops$end1) >= start) |
+                   (as.numeric(loops$start2) <= end & as.numeric(loops$end2) >= start),]
+
+    loops$displayNames<-NA
     #add track name info
     fileIndex<-which(sapply(loopFiles, `==`, sampleLoops))
     loops$displayNames<-loopTrackNames[fileIndex]
-
     #add color info
     loops$colorNames<-NA
     if (length(loopTrackColors)==1) {
@@ -1649,12 +1647,8 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
     else {
       loops$colorNames<-loopTrackColors[fileIndex]
     }
-
     allLoops<-rbind(allLoops, loops)
-
-
   }
-
   #specific color info
   if (is.null(specialLoopColors) == FALSE) {
     if (is.null(specialLoops) == TRUE) {
@@ -1673,32 +1667,22 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
       }
     }
   }
-
   allLoops$trackType<-"loops"
   allLoops$start<-(allLoops$start1+allLoops$end1)/2
   allLoops$end<-(allLoops$start2+allLoops$end2)/2
-
   allLoops$start<-allLoops$start/1000000
   allLoops$end<-allLoops$end/1000000
 
   if (loop_orientation == "above") {
-    curvature=-0.5
     ymin<-0
     ymax<-1
+    heightSign<-1
   }
   else {
-    curvature=0.5
     ymin<-(-1)
     ymax<-0
-
+    heightSign<--1
   }
-
-  allLoops<-data.table::as.data.table(allLoops)
-  allLoops$y_center<-0
-  allLoops[, y_min := y_center + curvature]
-  allLoops[, y_max := y_center]
-
-  allLoops<-data.frame(allLoops)
   allLoops$start1<-allLoops$start1/1000000
   allLoops$end1<-allLoops$end1/1000000
   allLoops$start2<-allLoops$start2/1000000
@@ -1709,46 +1693,90 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
   if (is.null(minScore)==FALSE) { #any loops with a score below the minimum will be more transparent
     allLoops$alpha[is.na(allLoops$score)==FALSE & allLoops$score < minScore]<-alpha/10
     allLoops$lineSize[is.na(allLoops$score)==FALSE & allLoops$score < minScore]<-lineSize/2
-
   }
   allLoops$displayNames<-as.character(allLoops$displayNames)
   allLoops$displayNames<-factor(allLoops$displayNames, levels=loopTrackNames)
+  allLoops$loop_orientation<-loop_orientation
 
-  p1<-ggplot2::ggplot(allLoops)+ggplot2::geom_curve(ggplot2::aes(x=.data$start, y=0, xend=.data$end, yend=0, color=.data$colorNames, alpha=.data$alpha, linewidth=.data$lineSize),
-                                  curvature=curvature)+ggplot2::scale_alpha_identity()+ggplot2::scale_linewidth_identity()+
+  # --- explicit-height arc construction (replaces geom_curve's aspect-dependent bulge) ---
+  allLoops$loopID<-seq_len(nrow(allLoops))
+  viewStartMb<-start/1e6
+  viewEndMb<-end/1e6
+
+  trueSpan<-abs(allLoops$end - allLoops$start)
+  relSpan<-pmin(1, trueSpan / viewWidthMb)
+  allLoops$arcHeight<-heightSign * (minHeightFrac + (maxHeightFrac - minHeightFrac) * relSpan)
+
+  allLoops$xAInView<-allLoops$start >= viewStartMb & allLoops$start <= viewEndMb
+  allLoops$xBInView<-allLoops$end   >= viewStartMb & allLoops$end   <= viewEndMb
+
+  # add in extra information that would be needed by trackDJ function
+  allLoops$minHeightFrac<-minHeightFrac
+  allLoops$maxHeightFrac<-maxHeightFrac
+  allLoops$nArcPoints<-nArcPoints
+  allLoops$capMultiplier<-capMultiplier
+  allLoops$viewWidth<-viewWidthMb
+
+  # anchors farther than this get their *shape* capped (to avoid the earlier flatness
+  # problem); anchors closer than this use the true distance, so there's no discontinuity
+  # right as an anchor crosses in or out of view
+  capDistMb<-capMultiplier * viewWidthMb
+
+  tSeq<-seq(0, 1, length.out=nArcPoints)
+
+  arcList<-lapply(seq_len(nrow(allLoops)), function(i) {
+    row<-allLoops[i, ]
+    # use whichever anchor is in view as the fixed reference point; if both are in view
+    # it doesn't matter which, the arc is symmetric
+    if (row$xBInView && !row$xAInView) { xIn<-row$end; xOut<-row$start } else { xIn<-row$start; xOut<-row$end }
+    trueDist<-xOut - xIn
+    s<-sign(trueDist); if (s == 0) s<-1
+    effDist<-s * min(abs(trueDist), capDistMb)
+    xOutEff<-xIn + effDist
+    x<-xIn + tSeq * (xOutEff - xIn)
+    y<-4 * row$arcHeight * tSeq * (1 - tSeq)
+    data.frame(
+      x = x, y = y,
+      loopID = row$loopID,
+      colorNames = row$colorNames,
+      alpha = row$alpha,
+      lineSize = row$lineSize,
+      displayNames = row$displayNames
+    )
+  })
+  arcData<-do.call(rbind, arcList)
+
+  # ---------------------------------------------------------------------------------------
+
+  p1<-ggplot2::ggplot(allLoops)+
+    ggplot2::geom_path(data=arcData, ggplot2::aes(x=.data$x, y=.data$y, group=.data$loopID,
+                                                  color=.data$colorNames, alpha=.data$alpha, linewidth=.data$lineSize))+
+    ggplot2::scale_alpha_identity()+ggplot2::scale_linewidth_identity()+
     ggplot2::geom_segment(ggplot2::aes(x=.data$start1, xend=.data$end1, y=0, yend=0,
-                     color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
+                                       color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
     ggplot2::geom_segment(ggplot2::aes(x=.data$start2, xend=.data$end2, y=0, yend=0,
-                     color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
+                                       color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
     ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames ~., switch="y", scales="free_y", drop=FALSE)+
     ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
     ggplot2::coord_cartesian(xlim=c(as.numeric(start)/1000000, as.numeric(end)/1000000))+
     ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
-                                                axis.text.y=ggplot2::element_blank(),
-                                                axis.ticks.y=ggplot2::element_blank(),
-                                                axis.line.y=ggplot2::element_blank(),
-                                                plot.title=ggplot2::element_text(hjust=0.5),
-                                                legend.position = "none",strip.text = ggplot2::element_text(size = fontSize))
+                                                                           axis.text.y=ggplot2::element_blank(),
+                                                                           axis.ticks.y=ggplot2::element_blank(),
+                                                                           axis.line.y=ggplot2::element_blank(),
+                                                                           plot.title=ggplot2::element_text(hjust=0.5),
+                                                                           legend.position = "none",strip.text = ggplot2::element_text(size = fontSize))
   if (rasterizePlot==TRUE) {
     rast_layers <- lapply(p1$layers, function(layer) {
-      if (inherits(layer$geom, "GeomCurve") || inherits(layer$geom,"GeomSegment")) {
+      if (inherits(layer$geom, "GeomPath") || inherits(layer$geom,"GeomSegment")) {
         ggrastr::rasterise(layer, dpi = 300)
       } else {
         layer
       }
     })
-
     p1$layers<-rast_layers
   }
-
-
   return(p1)
-
-
-
-
 }
-
 
 
 
@@ -1801,6 +1829,10 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
 #' @param specialLoops character vector listing the names of specific loops you want to put in a different color
 #' @param specialLoopColors character vector containing the color(s) you want to give your special loops. requires 'specialLoops' to be specified
 #' @param loop_orientation either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'
+#' @param minHeightFrac sets minimum loop height relative to full plot. Default is 0.15
+#' @param maxHeightFrac sets maximum loop height reltaive to full plot. Default is 0.9
+#' @param nArcPoints number of points used to draw each loop's arc; higher values give smoother curves at a small performance cost. Default is 30.
+#' @param capMultiplier Caps the distance (as a multiple of the viewing window width) used to shape arcs for loops with an off-screen anchor, so distant anchors don't produce a flattened-looking curve. Default is 2.
 #' @param trackOrder_type character vector with the desired order of track types. Default is c("coverage","peaks","loops", "genome")
 #' @param fontSize a numeric for desired font size. Default is 9.
 #' @param saveFigure boolean, whether you want to save the final figure to a file. Default is FALSE.
@@ -1826,6 +1858,7 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
                               labelStrand=FALSE, strandColors=NULL,
                               loopFiles=NULL, loopTrackNames=NULL,
                               loopTrackColors="black", lineSize=0.8,alpha=0.8,minScore=NULL,rasterizeLoopPlot=FALSE,
+                              minHeightFrac=0.15, maxHeightFrac=0.9, nArcPoints=30, capMultiplier=2,
                               specialLoops=NULL,specialLoopColors=NULL, loop_orientation="above",
                               trackOrder_type=c("coverage","peaks","loops","genome"), fontSize=9,
                               saveFigure=FALSE, figureName="plot_genomic_tracks_figure",figureFormat="png") {
@@ -2043,8 +2076,12 @@ plot_genomic_tracks<-function(genomicLoc, includeGenome=TRUE,includeTranscripts=
         j<-minScore
         k<-rasterizeLoopPlot
         l<-fontSize
+        m<-minHeightFrac
+        n<-maxHeightFrac
+        o<-nArcPoints
+        q<-capMultiplier
 
-        p_loops<-plot_loops(genomicLoc=a, loopFiles=b, loopTrackNames=c, loopTrackColors=d, lineSize=e, alpha=f, specialLoops=g, specialLoopColors=h, loop_orientation=i, minScore = j, rasterizePlot=k, fontSize=l)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
+        p_loops<-plot_loops(genomicLoc=a, loopFiles=b, loopTrackNames=c, loopTrackColors=d, lineSize=e, alpha=f, specialLoops=g, specialLoopColors=h, loop_orientation=i, minScore = j, rasterizePlot=k, fontSize=l,minHeightFrac=m, maxHeightFrac=n, nArcPoints=o, capMultiplier = q)+ggplot2::theme(text = ggplot2::element_text(family = "Helvetica"))
 
         #if plot is not the last one, remove X axis
         if (lastType !="loops" & lastType!="contacts") {
@@ -2395,32 +2432,89 @@ trackDJ<-function(plotList, plotOrder, fontSize=9, saveFigure=FALSE, figureForma
       data_plot<-loopData[loopData$displayNames==plotName,]
       data_plot$displayNames<-factor(data_plot$displayNames, levels=plotName)
 
-      if (unique(data_plot$y_min) == (-0.5)) {
-        curvature=-0.5
+      loop_orientation<-unique(data_plot$loop_orientation)
+      if (loop_orientation == "above") {
         ymin<-0
         ymax<-1
+        heightSign<-1
       }
-
       else {
-        curvature=0.5
         ymin<-(-1)
         ymax<-0
+        heightSign<--1
       }
 
-      pLoop<-ggplot2::ggplot(data_plot)+ggplot2::geom_curve(ggplot2::aes(x=.data$start, y=0, xend=.data$end, yend=0, color=.data$colorNames, alpha=.data$alpha, linewidth=.data$lineSize),
-                                          curvature=curvature)+ggplot2::scale_alpha_identity()+ggplot2::scale_linewidth_identity()+
+      minHeightFrac<-unique(data_plot$minHeightFrac)
+      maxHeightFrac<-unique(data_plot$maxHeightFrac)
+      capMultiplier<-unique(data_plot$capMultiplier)
+      nArcPoints<-unique(data_plot$nArcPoints)
+      viewWidthMb<-unique(data_plot$viewWidth)
+
+      capDistMb<-capMultiplier * viewWidthMb
+
+      tSeq<-seq(0, 1, length.out=nArcPoints)
+
+      arcList<-lapply(seq_len(nrow(data_plot)), function(i) {
+        row<-data_plot[i, ]
+        if (row$xBInView && !row$xAInView) { xIn<-row$end; xOut<-row$start } else { xIn<-row$start; xOut<-row$end }
+        trueDist<-xOut - xIn
+        s<-sign(trueDist); if (s == 0) s<-1
+        effDist<-s * min(abs(trueDist), capDistMb)
+        xOutEff<-xIn + effDist
+        x<-xIn + tSeq * (xOutEff - xIn)
+        y<-4 * row$arcHeight * tSeq * (1 - tSeq)
+        data.frame(
+          x = x, y = y,
+          loopID = row$loopID,
+          colorNames = row$colorNames,
+          alpha = row$alpha,
+          lineSize = row$lineSize,
+          displayNames = row$displayNames
+        )
+      })
+      arcData<-do.call(rbind, arcList)
+
+
+
+
+      # pLoop<-ggplot2::ggplot(data_plot)+ggplot2::geom_curve(ggplot2::aes(x=.data$start, y=0, xend=.data$end, yend=0, color=.data$colorNames, alpha=.data$alpha, linewidth=.data$lineSize),
+      #                                     curvature=curvature)+ggplot2::scale_alpha_identity()+ggplot2::scale_linewidth_identity()+
+      #   ggplot2::geom_segment(ggplot2::aes(x=.data$start1, xend=.data$end1, y=0, yend=0,
+      #                    color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
+      #   ggplot2::geom_segment(ggplot2::aes(x=.data$start2, xend=.data$end2, y=0, yend=0,
+      #                    color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
+      #   ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames  ~., switch="y", scales="free_y")+
+      #   ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
+      #   ggplot2::coord_cartesian(xlim=c(plot_start, plot_end))+
+      #   ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
+      #                                               axis.text.y=ggplot2::element_blank(),
+      #                                               axis.ticks.y=ggplot2::element_blank(),
+      #                                               axis.line.y=ggplot2::element_blank(),
+      #                                               legend.position = "none",strip.text = ggplot2::element_text(size = fontSize),text = ggplot2::element_text(family = "Helvetica"))
+      #
+
+
+      pLoop<-ggplot2::ggplot(data_plot)+
+        ggplot2::geom_path(data=arcData, ggplot2::aes(x=.data$x, y=.data$y, group=.data$loopID,
+                                                      color=.data$colorNames, alpha=.data$alpha, linewidth=.data$lineSize))+
+        ggplot2::scale_alpha_identity()+ggplot2::scale_linewidth_identity()+
         ggplot2::geom_segment(ggplot2::aes(x=.data$start1, xend=.data$end1, y=0, yend=0,
-                         color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
+                                           color=.data$colorNames, alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
         ggplot2::geom_segment(ggplot2::aes(x=.data$start2, xend=.data$end2, y=0, yend=0,
-                         color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
-        ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames  ~., switch="y", scales="free_y")+
+                                           color=.data$colorNames,alpha=.data$alpha),linewidth=3, lineend = "butt", linejoin = "mitre")+
+        ggplot2::scale_color_identity()+ggplot2::facet_grid(displayNames ~., switch="y", scales="free_y", drop=FALSE)+
         ggplot2::scale_y_continuous(limits = c(ymin, ymax),expand = c(0, 0))+
         ggplot2::coord_cartesian(xlim=c(plot_start, plot_end))+
         ggplot2::theme_classic()+ggplot2::xlab("Location (Mb)")+ggplot2::theme(axis.title.y=ggplot2::element_blank(),
-                                                    axis.text.y=ggplot2::element_blank(),
-                                                    axis.ticks.y=ggplot2::element_blank(),
-                                                    axis.line.y=ggplot2::element_blank(),
-                                                    legend.position = "none",strip.text = ggplot2::element_text(size = fontSize),text = ggplot2::element_text(family = "Helvetica"))
+                                                                               axis.text.y=ggplot2::element_blank(),
+                                                                               axis.ticks.y=ggplot2::element_blank(),
+                                                                               axis.line.y=ggplot2::element_blank(),
+                                                                               legend.position = "none",strip.text = ggplot2::element_text(size = fontSize),text = ggplot2::element_text(family = "Helvetica"))
+
+
+
+
+
       list_single[[plotNum]]<-pLoop+ggplot2::ggtitle(graphTitle)+ggplot2::theme(axis.text=ggplot2::element_text(size=fontSize), axis.title.x=ggplot2::element_text(size=fontSize), axis.line.x=ggplot2::element_line(linewidth=1),plot.title=ggplot2::element_text(hjust=0.5))
 
       #if plot is not the last one, remove X axis
