@@ -1149,7 +1149,6 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
   if (length(genomicLoc) != 3) {
     stop("error in plot_coverage: please provide genomic coordinates")
   }
-  #set up covFiles_df
   if (is.null(covTrackNames)) {
     covTrackNames<-paste0("Cov_", 1:length(covFiles)) #will name the tracks in the order they came
   }
@@ -1162,7 +1161,6 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
   if (length(covTrackColors) != 1 & length(covTrackColors) !=length(covFiles)) {
     stop("error: please either select one color for all tracks, or provide the same number of colors as number of tracks")
   }
-  covFiles_df<-data.frame(fileNames=covFiles, displayNames=covTrackNames, colorNames=covTrackColors)
   start<-as.numeric(genomicLoc[2])
   end<-as.numeric(genomicLoc[3])
   #the chromosome name might include "chr" or not -- make sure that this is handled
@@ -1190,31 +1188,73 @@ plot_coverage<-function(genomicLoc, covFiles, covTrackNames=NULL,covTrackColors=
 
   # Import trackfiles
   allSamples<-data.frame()
-  for (trackFile in covFiles_df$fileNames) {
-    chromosomes<-get_chrom_names(trackFile)
-    if (chr %in% chromosomes) {
-      gene_range<-GenomicRanges::GRanges(seqnames = chr,ranges = IRanges::IRanges(start = as.numeric(start),end = as.numeric(end)))
+  for (a in 1:length(covFiles)) {
+    trackFile<-covFiles[[a]]
+    if (length(covTrackColors)==1) {
+      colorName<-covTrackColors
     }
     else {
-      if (paste0("chr",chr) %in% chromosomes) {
-        gene_range<-GenomicRanges::GRanges(seqnames=paste0("chr",chr), ranges=IRanges::IRanges(start=as.numeric(start), end=as.numeric(end)))
+      colorName<-covTrackColors[[a]]
+    }
+    trackName<-covTrackNames[[a]]
+    if (is.character(trackFile)) {
+      ####here
+      chromosomes<-get_chrom_names(trackFile)
+      if (chr %in% chromosomes) {
+        gene_range<-GenomicRanges::GRanges(seqnames = chr,ranges = IRanges::IRanges(start = as.numeric(start),end = as.numeric(end)))
+      }
+      else {
+        if (paste0("chr",chr) %in% chromosomes) {
+          gene_range<-GenomicRanges::GRanges(seqnames=paste0("chr",chr), ranges=IRanges::IRanges(start=as.numeric(start), end=as.numeric(end)))
+        }
+        else {
+          stop("chromosome not found in coverage file")
+        }
+      }
+
+
+      if (tools::file_ext(trackFile) %in% c("bdg","bg", "bedgraph", "bedGraph")) {
+        bigwig_df<-read_bedgraph_region(trackFile, as.character(GenomeInfoDb::seqnames(gene_range)), as.numeric(start), as.numeric(end))
+
+      }
+      else {
+        bigwig_gRanges<-rtracklayer::import(trackFile, which=gene_range)
+        bigwig_df<-as.data.frame(bigwig_gRanges)
+      }
+
+    }
+
+    else if (is(trackFile,"GRanges") == TRUE) {
+      if (chr %in% GenomeInfoDb::seqlevels(trackFile)) {
+        gene_range<-GenomicRanges::GRanges(seqnames = chr,
+                                           ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+
+      else if (as.character(chr) %in% GenomeInfoDb::seqlevels(trackFile)) {
+        gene_range <- GenomicRanges::GRanges(seqnames = as.character(chr),
+                       ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+      else if (is.na(suppressWarnings(as.numeric(chr)))==FALSE & as.numeric(chr) %in% GenomeInfoDb::seqlevels(trackFile)) {
+        gene_range <- GenomicRanges::GRanges(seqnames = as.numeric(chr),
+                                             ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+
+      else if (paste0("chr",chr) %in% GenomeInfoDb::seqlevels(trackFile)) {
+        gene_range <- GenomicRanges::GRanges(seqnames = paste0("chr",chr),
+                                             ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
       }
       else {
         stop("chromosome not found in coverage file")
       }
+      gRanges_overlap <- GenomicRanges::subsetByOverlaps(trackFile, gene_range, ignore.strand = TRUE)
+      bigwig_df<-as.data.frame(gRanges_overlap)
     }
 
-    if (tools::file_ext(trackFile) %in% c("bdg","bg", "bedgraph", "bedGraph")) {
-      bigwig_df<-read_bedgraph_region(trackFile, as.character(GenomeInfoDb::seqnames(gene_range)), as.numeric(start), as.numeric(end))
 
-    }
-    else {
-      bigwig_gRanges<-rtracklayer::import(trackFile, which=gene_range)
-      bigwig_df<-as.data.frame(bigwig_gRanges)
-    }
 
-    bigwig_df$colorNames<-covFiles_df[covFiles_df$fileNames==trackFile,]$colorNames
-    bigwig_df$displayNames<-covFiles_df[covFiles_df$fileNames==trackFile,]$displayNames
+
+    bigwig_df$colorNames<-colorName
+    bigwig_df$displayNames<-trackName
     allSamples<-rbind(allSamples, bigwig_df)
   }
 
@@ -1371,53 +1411,94 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
 
 
   allPeaks<-data.frame()
-  for (samplePeaks in peakFiles) {
-    if (is.data.frame(samplePeaks)==FALSE) {
+  # samplePeaks in peakFiles
+  for (a in 1:length(peakFiles)) {
+    samplePeaks<-peakFiles[[a]]
+    if (is.character(samplePeaks)) {
       #check if file exists
       if (file.exists(samplePeaks) == FALSE){
         stop(paste0("error: ", samplePeaks, " peak file not found"))
 
       }
       else {
-        peaks<-read.delim(samplePeaks, check.names=FALSE, stringsAsFactors = FALSE, header = FALSE)
+        # peaks<-read.delim(samplePeaks, check.names=FALSE, stringsAsFactors = FALSE, header = FALSE)
+
+        chromosomes<-get_chrom_names(samplePeaks)
+        if (chr %in% chromosomes) {
+          gene_range<-GenomicRanges::GRanges(seqnames = chr,ranges = IRanges::IRanges(start = as.numeric(start),end = as.numeric(end)))
+        }
+        else {
+          if (paste0("chr",chr) %in% chromosomes) {
+            gene_range<-GenomicRanges::GRanges(seqnames=paste0("chr",chr), ranges=IRanges::IRanges(start=as.numeric(start), end=as.numeric(end)))
+          }
+          else {
+            stop("chromosome not found in peak file")
+          }
+        }
+        peaks<-robust_import_bed(file=samplePeaks, which=gene_range)
+        peaks<-as.data.frame(peaks)
+
 
       }
     }
-    else { #when the provided object is a dataframe rather than a file name
+    else if (is(samplePeaks,"GRanges") == TRUE) { #when the provided object is a Granges object
+      if (chr %in% GenomeInfoDb::seqlevels(samplePeaks)) {
+        gene_range<-GenomicRanges::GRanges(seqnames = chr,
+                                           ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+
+      else if (as.character(chr) %in% GenomeInfoDb::seqlevels(samplePeaks)) {
+        gene_range <- GenomicRanges::GRanges(seqnames = as.character(chr),
+                                             ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+      else if (is.na(suppressWarnings(as.numeric(chr)))==FALSE & as.numeric(chr) %in% GenomeInfoDb::seqlevels(samplePeaks)) {
+        gene_range <- GenomicRanges::GRanges(seqnames = as.numeric(chr),
+                                             ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+
+      else if (paste0("chr",chr) %in% GenomeInfoDb::seqlevels(samplePeaks)) {
+        gene_range <- GenomicRanges::GRanges(seqnames = paste0("chr",chr),
+                                             ranges = IRanges::IRanges(start = as.numeric(start), end = as.numeric(end)))
+      }
+      else {
+        stop("chromosome not found in peak file")
+      }
+      gRanges_overlap <- GenomicRanges::subsetByOverlaps(samplePeaks, gene_range, ignore.strand = TRUE)
+      peaks<-as.data.frame(gRanges_overlap)
+    }
+    else if (is.data.frame(samplePeaks)==TRUE) {
       peaks<-samplePeaks
+      #keep only peaks within region
+      peaks<-peaks[peaks$chr==chr | peaks$chr==paste0("chr",chr),]
+      peaks<-peaks[peaks$end>as.numeric(start) & peaks$start<as.numeric(end),]
     }
 
     names(peaks)[1:3] <- c("chr", "start", "end")
-    if (ncol(peaks)>3) { #if peak names or strands are provided, include that information
-      names(peaks)[4]<-"name"
-      if (ncol(peaks)>5) {
-        names(peaks)[6]<-"strand"
-      }
-    }
-    peaks<-peaks[,colnames(peaks) %in% c("chr", "start","end","name","strand")]
+
+
     if ("name" %in% colnames(peaks)==FALSE) {
       peaks$name<-""
     }
     if ("strand" %in% colnames(peaks)==FALSE) {
       peaks$strand<-""
     }
-    #keep only peaks in the region
-    peaks<-peaks[peaks$chr==chr | peaks$chr==paste0("chr",chr),]
-    peaks<-peaks[peaks$end>as.numeric(start) & peaks$start<as.numeric(end),]
+
+    peaks<-peaks[,colnames(peaks) %in% c("chr", "start","end","name","strand")]
 
 
     if (nrow(peaks)!=0) {
+      peaks$name[is.na(peaks$name)]<-""
+      peaks$strand[is.na(peaks$strand) | (is.na(peaks$strand)==FALSE & peaks$strand %in% c("+","-",1,-1,"1","-1")==FALSE)]<-""
       peaks$displayNames<-NA
       #add track name info
-      fileIndex<-which(sapply(peakFiles, `==`, samplePeaks))
-      peaks$displayNames<-peakTrackNames[fileIndex]
+      peaks$displayNames<-peakTrackNames[a]
       #add Color info
       peaks$colorNames<-NA
       if (length(peakTrackColors) == 1) {
         peaks$colorNames<-peakTrackColors
       }
       else {
-        peaks$colorNames<-peakTrackColors[fileIndex]
+        peaks$colorNames<-peakTrackColors[a]
       }
       allPeaks<-rbind(allPeaks,peaks)
 
@@ -1553,15 +1634,15 @@ plot_peaks<-function(genomicLoc, peakFiles, peakTrackNames=NULL,
 #' @param loop_orientation either "above" or "below". "above" will draw loops above a horizontal axis; "below" will draw loops below a horizontal axis. Default is "above'
 #' @param fontSize a numeric for desired font size. Default is 9.
 #' @param minHeightFrac sets minimum loop height relative to full plot. Default is 0.15
-#' @param maxHeightFrac sets maximum loop height reltaive to full plot. Default is 0.9
+#' @param maxHeightFrac sets maximum loop height relative to full plot. Default is 0.9
 #' @param capMultiplier Caps the distance (as a multiple of the viewing window width) used to shape arcs for loops with an off-screen anchor, so distant anchors don't produce a flattened-looking curve. Default is 2.
-#' @param nArcPoints number of points used to draw each loop's arc; higher values give smoother curves at a small performance cost. Default is 30.
+#' @param nArcPoints number of points used to draw each loop's arc; higher values give smoother curves at a small performance cost. Default is 50
 #' @return ggplot of loop tracks
 
 plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
                      loopTrackColors="black", lineSize=0.8, alpha=0.8,rasterizePlot=FALSE,
                      specialLoops=NULL, specialLoopColors=NULL, minScore=NULL, loop_orientation="above", fontSize=9,
-                     minHeightFrac=0.15, maxHeightFrac=0.9, nArcPoints=30, capMultiplier=2) {
+                     minHeightFrac=0.15, maxHeightFrac=0.9, nArcPoints=50, capMultiplier=2) {
   if (length(genomicLoc) != 3) {
     stop("error in plot_loops: please provide genomic coordinates")
   }
@@ -1591,61 +1672,78 @@ plot_loops<-function(genomicLoc, loopFiles, loopTrackNames=NULL,
 
   #read in loop files
   allLoops<-data.frame()
-  for (sampleLoops in loopFiles) {
-    if (is.data.frame(sampleLoops)==FALSE) {
+  #sampleLoops in loopFiles
+  for (a in 1:length(loopFiles)) {
+    sampleLoops<-loopFiles[[a]]
+    if (is.character(sampleLoops)) {
       if (file.exists(sampleLoops)==FALSE) {
         message(paste0("error: ", sampleLoops, " loop file not found. skipping ..."))
       }
       else {
-        loops<-read.delim(sampleLoops, check.names=FALSE, stringsAsFactors = FALSE, header=FALSE)
-        names(loops)[1:6]<-c("chrom1", "start1", "end1", "chrom2", "start2", "end2")
-      }
-    }
-    else {
-      loops<-sampleLoops
-    }
-    if (ncol(loops)>6) {
-      if (is.numeric(loops[,7])) {
-        names(loops)[7]<-"score"
-      }
-      else {
-        names(loops)[7]<-"name"
-      }
-      if (ncol(loops)>7) {
-        if (is.numeric(loops[,8])) {
-          names(loops)[8]<-"score"
+        chromosomes<-get_chrom_names(sampleLoops)
+        if (chr %in% chromosomes) {
+          gene_range<-GenomicRanges::GRanges(seqnames = chr,ranges = IRanges::IRanges(start = as.numeric(start),end = as.numeric(end)))
         }
         else {
-          names(loops)[8]<-"name"
+          if (paste0("chr",chr) %in% chromosomes) {
+            gene_range<-GenomicRanges::GRanges(seqnames=paste0("chr",chr), ranges=IRanges::IRanges(start=as.numeric(start), end=as.numeric(end)))
+          }
+          else {
+            stop("chromosome not found in peak file")
+          }
         }
+        loops_list<-robust_import_bedpe(file=sampleLoops, use.region="either", which=gene_range)
+        anchor1<-as.data.frame(loops_list$first)
+        anchor2<-as.data.frame(loops_list$second)
+
+        loops<-data.frame(chrom1=anchor1$seqnames, start1=anchor1$start, end1=anchor1$end, chrom2=anchor2$start, start2=anchor2$start, end2=anchor2$end)
+        loops<-cbind(loops, loops_list$pairs)
+
+
       }
     }
-    if ("score" %in% colnames(loops)==FALSE) {
-      loops$score<-NA
+    else if (is.data.frame(sampleLoops)) {
+      loops<-sampleLoops
+      if (ncol(loops)>6) {
+        if (is.numeric(loops[,7])) {
+          names(loops)[7]<-"score"
+        }
+        else {
+          names(loops)[7]<-"name"
+        }
+        if (ncol(loops)>7) {
+          if (is.numeric(loops[,8])) {
+            names(loops)[8]<-"score"
+          }
+          else {
+            names(loops)[8]<-"name"
+          }
+        }
+      }
+      if ("score" %in% colnames(loops)==FALSE) {
+        loops$score<-NA
+      }
+      if ("name" %in% colnames(loops)==FALSE) {
+        loops$name<-""
+      }
+      loops<-loops[,c("chrom1","start1","end1","chrom2","start2","end2","name","score")]
+      #keep only loops on the chromosome of interest
+
+      loops<-loops[(loops$chrom1 == chr | loops$chrom1 ==paste0("chr",chr)) &
+                     (loops$chrom2 == chr | loops$chrom2 ==paste0("chr",chr)),]
+
+      loops<-loops[(as.numeric(loops$start1) <= end & as.numeric(loops$end1) >= start) |
+                     (as.numeric(loops$start2) <= end & as.numeric(loops$end2) >= start),]
     }
-    if ("name" %in% colnames(loops)==FALSE) {
-      loops$name<-""
-    }
-    loops<-loops[,c("chrom1","start1","end1","chrom2","start2","end2","name","score")]
-    #keep only loops on the chromosome of interest
 
-    loops<-loops[(loops$chrom1 == chr | loops$chrom1 ==paste0("chr",chr)) &
-                   (loops$chrom2 == chr | loops$chrom2 ==paste0("chr",chr)),]
 
-    loops<-loops[(as.numeric(loops$start1) <= end & as.numeric(loops$end1) >= start) |
-                   (as.numeric(loops$start2) <= end & as.numeric(loops$end2) >= start),]
-
-    loops$displayNames<-NA
-    #add track name info
-    fileIndex<-which(sapply(loopFiles, `==`, sampleLoops))
-    loops$displayNames<-loopTrackNames[fileIndex]
+    loops$displayNames<-loopTrackNames[[a]]
     #add color info
-    loops$colorNames<-NA
     if (length(loopTrackColors)==1) {
       loops$colorNames<-loopTrackColors
     }
     else {
-      loops$colorNames<-loopTrackColors[fileIndex]
+      loops$colorNames<-loopTrackColors[[a]]
     }
     allLoops<-rbind(allLoops, loops)
   }
@@ -2671,12 +2769,12 @@ get_chrom_names <- function(file) {
   }
 
   # for bed and bedgraph files:
-  if (ext %in% c("bed", "bedgraph", "bg", "txt", "tsv","bdg", "bedGraph")) {
+  if (ext %in% c("bed", "bedgraph", "bg", "txt", "tsv","bdg", "bedGraph","bedpe")) {
     #only read first column (chromosome)
     chroms <- unique(data.table::fread(file, select = 1, header = FALSE)[[1]])
     return(chroms)
   }
-  stop("Unsupported file type. Supported: bigwig (.bw), bed, bedGraph, bg, txt, tsv")
+  stop("Unsupported file type. Supported: bigwig (.bw), bed, bedGraph, bg, txt, tsv","bedpe")
 }
 
 
@@ -3052,5 +3150,367 @@ assign_y_levels_transcripts<-function(df) {
   }
   return(df)
 }
+
+
+#' Count the max number of tab-delimited fields among the data lines,ignoring UCSC track/browser header lines, comments, and blank lines.
+#' @param file path for the file to import
+#' @return number of fields
+.count_fields <- function(file) {
+  raw <- readLines(file, n = 200)
+  raw <- raw[!grepl("^(track|browser|#)", raw) & nzchar(trimws(raw))]
+  if (!length(raw)) stop("No data lines found in ", file)
+  max(lengths(strsplit(raw, "\t")))
+}
+
+
+#' Normalize a `which` argument into a GRanges (or NULL for "everything").
+#' @param which either a GRanges object or a "chr:start-end" string
+#' @return GRanges object
+.as_which_granges <- function(which) {
+  if (is.null(which)) return(NULL)
+  if (methods::is(which, "GRanges")) return(which)
+  if (is.character(which)) {
+    m <- regmatches(which, regexec("^([^:]+):([0-9,]+)-([0-9,]+)$", which))[[1]]
+    if (length(m) != 4) {
+      stop("Could not parse region string '", which,
+           "'. Expected format 'chr:start-end', e.g. 'chr1:1000000-2000000'.")
+    }
+    return(GenomicRanges::GRanges(m[2],
+                                  IRanges::IRanges(as.numeric(gsub(",", "", m[3])),
+                                                   as.numeric(gsub(",", "", m[4])))))
+  }
+  stop("`which` must be NULL, a GRanges, or a 'chr:start-end' string.")
+}
+
+#' Robustly import a BED (or BED-like) file as a GRanges, optionally restricted to a region of interest.
+#' @param file Path to a BED file.
+#' @param which region of interest restricting what gets returned
+#' @param ignore.strand Passed to the overlap filtering step. Default TRUE
+#' @param verbose If TRUE, reports which strategy succeeded. Default FALSE
+#' @return GRanges object.
+robust_import_bed <- function(file, which = NULL, ignore.strand = TRUE, verbose = FALSE) {
+
+  roi <- .as_which_granges(which)
+
+  # ---- Attempt 1: standard strict rtracklayer import ----
+  gr <- tryCatch(
+    if (is.null(roi)) {
+      rtracklayer::import(file, format = "bed")
+    } else {
+      rtracklayer::import(file, format = "bed", which = roi)
+    },
+    error = function(e) e
+  )
+  if (!inherits(gr, "error")) {
+    if (verbose) message("Imported with standard rtracklayer::import().")
+    return(gr)
+  }
+  attempt1_err <- gr
+
+  # ---- Attempt 2: non-standard trailing columns (narrowPeak-style, etc) ----
+  # Treat every column past the 6 standard BED columns as generic character
+  # so decimal/text values there can never trigger a strict-type error.
+  ncols <- .count_fields(file)
+  if (ncols > 6) {
+    extra_n <- ncols - 6
+    extra_cols <- stats::setNames(rep("character", extra_n), paste0("V", seq_len(extra_n) + 6))
+    gr <- tryCatch(
+      if (is.null(roi)) {
+        rtracklayer::import(file, format = "bed", extraCols = extra_cols)
+      } else {
+        rtracklayer::import(file, format = "bed", extraCols = extra_cols, which = roi)
+      },
+      error = function(e) e
+    )
+    if (!inherits(gr, "error")) {
+      if (verbose) message("Standard import failed; recovered by treating columns 7+ as generic character extraCols.")
+      return(gr)
+    }
+  }
+
+  # ---- Attempt 3: fully manual, permissive parser ----
+  # Reached only if the bad value is in a core column (chrom/start/end/
+  # name/score/strand) -- extraCols can't fix those, since they're always
+  # fixed-type in rtracklayer's BED parser.
+  if (verbose) {
+    message("Standard import and extraCols fallback both failed (",
+            conditionMessage(attempt1_err),
+            "). Falling back to permissive manual parser.")
+  }
+
+  raw <- readLines(file)
+  raw <- raw[!grepl("^(track|browser|#)", raw) & nzchar(trimws(raw))]
+  fields <- strsplit(raw, "\t")
+  n <- max(lengths(fields))
+  fields <- lapply(fields, function(x) { length(x) <- n; x })   # pad ragged rows with NA
+  df <- as.data.frame(do.call(rbind, fields), stringsAsFactors = FALSE)
+
+  bed_names <- c("chrom", "chromStart", "chromEnd", "name", "score", "strand",
+                 "thickStart", "thickEnd", "itemRgb", "blockCount", "blockSizes", "blockStarts")
+  names(df) <- if (n <= length(bed_names)) {
+    bed_names[seq_len(n)]
+  } else {
+    c(bed_names, paste0("V", seq_len(n - length(bed_names)) + length(bed_names)))
+  }
+
+  # Coordinates must be whole numbers -- coerce numerically and round
+  # defensively, warning (not erroring) if values weren't already integers.
+  for (col in intersect(c("chromStart", "chromEnd"), names(df))) {
+    v <- suppressWarnings(as.numeric(df[[col]]))
+    if (any(v != round(v), na.rm = TRUE)) {
+      warning(col, " contained non-integer values in ", file, "; rounding to nearest bp.")
+    }
+    df[[col]] <- as.integer(round(v))
+  }
+
+  # score/thickStart/thickEnd/blockCount: coerce to numeric where present,
+  # but never error -- anything that fails to parse becomes NA.
+  for (col in intersect(c("score", "thickStart", "thickEnd", "blockCount"), names(df))) {
+    df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
+  }
+
+  strand_vals <- if ("strand" %in% names(df)) {
+    ifelse(df$strand %in% c("+", "-"), df$strand, "*")
+  } else {
+    "*"
+  }
+
+  out <- GenomicRanges::GRanges(
+    seqnames = df$chrom,
+    ranges = IRanges::IRanges(start = df$chromStart + 1L, end = df$chromEnd),
+    strand = strand_vals
+  )
+
+  meta_cols <- setdiff(names(df), c("chrom", "chromStart", "chromEnd", "strand"))
+  if (length(meta_cols)) S4Vectors::mcols(out) <- df[meta_cols]
+
+  # Unlike attempts 1/2, this manual path bypassed import() entirely, so
+  # `which` has to be applied here as an explicit post-hoc overlap filter.
+  if (!is.null(roi)) out <- IRanges::subsetByOverlaps(out, roi, ignore.strand = ignore.strand)
+
+  out
+}
+
+
+#' Check if names and score columns need to be swapped
+#' @param name_col potential names
+#' @param score_col potential scores
+#' @return boolean
+.detect_name_score_swap <- function(name_col, score_col) {
+  # BEDPE has no enforced standard, and in practice some tools/pipelines
+  # write columns 7/8 as (score, name) instead of the bedtools/UCSC
+  # convention of (name, score). Detect that: a genuine `name` should be
+  # free text and a genuine `score` should always be numeric per spec, so
+  # if the "name" column turns out to parse as 100% numeric while the
+  # "score" column has at least one non-numeric, non-placeholder entry,
+  # the two are almost certainly swapped.
+  name_nonplaceholder  <- name_col[!is.na(name_col) & name_col != "."]
+  score_nonplaceholder <- score_col[!is.na(score_col) & score_col != "."]
+  if (!length(name_nonplaceholder) || !length(score_nonplaceholder)) return(FALSE)
+
+  name_all_numeric  <- !any(is.na(suppressWarnings(as.numeric(name_nonplaceholder))))
+  score_all_numeric <- !any(is.na(suppressWarnings(as.numeric(score_nonplaceholder))))
+
+  name_all_numeric && !score_all_numeric
+}
+
+#' Check if column looks like strand
+#' @param v column in question
+#' @return boolean
+.col_is_strand_like <- function(v) {
+  # TRUE/FALSE/NA (NA = every value is a placeholder, genuinely ambiguous).
+  nonplaceholder <- v[!is.na(v) & v != "."]
+  if (!length(nonplaceholder)) return(NA)
+  all(nonplaceholder %in% c("+", "-"))
+}
+
+#' Check if column looks like numeric
+#' @param v column in question
+#' @return boolean
+.col_is_numeric_like <- function(v) {
+  nonplaceholder <- v[!is.na(v) & v != "."]
+  if (!length(nonplaceholder)) return(NA)
+  !any(is.na(suppressWarnings(as.numeric(nonplaceholder))))
+}
+
+#' classify columns in bedpe file
+#' @param raw_df dataframe
+#' @param n number of columns
+#' @return list
+.classify_bedpe_columns <- function(raw_df, n) {
+  remaining <- n - 6
+  name_val <- score_val <- strand1_val <- strand2_val <- NULL
+  extra_idx <- integer(0)
+
+  if (remaining == 1) {
+    v7 <- raw_df$V7
+    if (isTRUE(.col_is_numeric_like(v7))) score_val <- v7 else name_val <- v7
+
+  } else if (remaining == 2) {
+    v7 <- raw_df$V7; v8 <- raw_df$V8
+    if (isTRUE(.col_is_strand_like(v7)) && isTRUE(.col_is_strand_like(v8))) {
+      strand1_val <- v7; strand2_val <- v8
+    } else {
+      name_val <- v7; score_val <- v8
+    }
+
+  } else if (remaining == 3) {
+    v7 <- raw_df$V7
+    if (isTRUE(.col_is_numeric_like(v7))) score_val <- v7 else name_val <- v7
+    strand1_val <- raw_df$V8; strand2_val <- raw_df$V9
+
+  } else if (remaining >= 4) {
+    name_val <- raw_df$V7; score_val <- raw_df$V8
+    strand1_val <- raw_df$V9; strand2_val <- raw_df$V10
+    if (remaining > 4) extra_idx <- 11:n
+  }
+
+  list(name = name_val, score = score_val,
+       strand1 = strand1_val, strand2 = strand2_val,
+       extra_idx = extra_idx)
+}
+
+#' Normalize a `which` argument into a GRanges (or NULL for "everything").
+#' @param which either a GRanges object or a "chr:start-end" string
+#' @return GRanges object
+.as_which_granges_pe <- function(which) {
+  if (is.null(which)) return(NULL)
+  if (methods::is(which, "GRanges")) return(which)
+  if (is.character(which)) {
+    m <- regmatches(which, regexec("^([^:]+):([0-9,]+)-([0-9,]+)$", which))[[1]]
+    if (length(m) != 4) {
+      stop("Could not parse region string '", which,
+           "'. Expected 'chr:start-end', e.g. 'chr1:1000000-2000000'.")
+    }
+    return(GenomicRanges::GRanges(m[2],
+                                  IRanges::IRanges(as.numeric(gsub(",", "", m[3])),
+                                                   as.numeric(gsub(",", "", m[4])))))
+  }
+  stop("`which` must be NULL, a GRanges, or a 'chr:start-end' string.")
+}
+
+
+#' Robustly import a BEDPE file by delegating each anchor's parsing to robust_import_bed()
+#' @param file Path to a BEDPE file (plain text or gzipped).
+#' @param which region of interest restricting what gets returned
+#' @param use.region "either" (anchor1 OR anchor2 overlaps),"both", "first", or "second". Default "either"
+#' @param ignore.strand Passed to the overlap filtering step. Default TRUE.
+#' @param verbose If TRUE, passed through to robust_import_bed(). for each anchor, plus reports pair-level progress here. Default FALSE
+#' @return list: $first (GRanges, anchor 1), $second (GRanges, anchor 2), $pairs (shared metadata DataFrame, one row per pair).
+robust_import_bedpe <- function(file, which = NULL,
+                                   use.region = c("either", "both", "first", "second"),
+                                   ignore.strand = TRUE, check_name_score_swap = TRUE,
+                                   verbose = FALSE) {
+  use.region <- match.arg(use.region)
+  roi <- .as_which_granges_pe(which)
+
+  raw <- readLines(file)                        # auto-decompresses .gz
+  raw <- raw[nzchar(trimws(raw))]
+  raw <- raw[!grepl("^#", raw)]                  # drop comment / '#'-prefixed header lines
+  if (!length(raw)) stop("No data lines found in ", file)
+
+  fields <- strsplit(raw, "\t")
+
+  # Detect (and drop) a plain column-name header line with no leading '#'.
+  if (length(fields) && suppressWarnings(is.na(as.numeric(fields[[1]][2])))) {
+    if (verbose) message("Detected and skipped a header line.")
+    fields <- fields[-1]
+  }
+  if (!length(fields)) stop("No data lines found in ", file, " after removing header/comments.")
+
+  n <- max(lengths(fields))
+  if (n < 6) stop(file, " has fewer than 6 columns -- not a valid BEDPE file.")
+  fields <- lapply(fields, function(x) { length(x) <- n; x })
+  raw_df <- as.data.frame(do.call(rbind, fields), stringsAsFactors = FALSE)
+  names(raw_df) <- paste0("V", seq_len(n))
+
+  df <- raw_df[c("V1", "V2", "V3", "V4", "V5", "V6")]
+  names(df) <- c("chrom1", "start1", "end1", "chrom2", "start2", "end2")
+
+  classified <- .classify_bedpe_columns(raw_df, n)
+  if (!is.null(classified$name))    df$name    <- classified$name
+  if (!is.null(classified$score))   df$score   <- classified$score
+  if (!is.null(classified$strand1)) df$strand1 <- classified$strand1
+  if (!is.null(classified$strand2)) df$strand2 <- classified$strand2
+  for (idx in classified$extra_idx) df[[paste0("V", idx)]] <- raw_df[[paste0("V", idx)]]
+
+  # Some BEDPE files (there's no enforced standard) write columns 7/8 as
+  # (score, name) instead of (name, score) -- check for that and swap back
+  # before anything downstream treats "name" as text and "score" as numeric.
+  # (Only meaningful when both columns were actually detected as present;
+  # .classify_bedpe_columns() already handles the case where only one of
+  # name/score exists at all.)
+  if (check_name_score_swap && all(c("name", "score") %in% names(df))) {
+    if (.detect_name_score_swap(df$name, df$score)) {
+      if (verbose) {
+        message("Detected swapped name/score columns in ", file,
+                " (name column was numeric, score column was not) -- correcting.")
+      }
+      tmp <- df$name
+      df$name <- df$score
+      df$score <- tmp
+    }
+  }
+
+  has_name   <- "name"    %in% names(df)
+  has_score  <- "score"   %in% names(df)
+  has_strand <- all(c("strand1", "strand2") %in% names(df))
+
+  # Build one BED-shaped row per anchor. Missing name/score/strand columns
+  # (not present in the source at all) get BED's own placeholders
+  # ("." / "0" / ".") for a uniform, valid 6-column shape -- genuinely bad
+  # *values* (not just absent columns) are left as-is for
+  # robust_import_bed()'s own fallback tiers to handle.
+  build_anchor_lines <- function(chrom, start, end, strand) {
+    name_col   <- if (has_name)  ifelse(is.na(df$name),  ".", df$name)                 else "."
+    score_col  <- if (has_score) ifelse(is.na(df$score), "0", as.character(df$score))  else "0"
+    strand_col <- if (has_strand) ifelse(is.na(strand), ".", strand)                   else "."
+    paste(chrom, start, end, name_col, score_col, strand_col, sep = "\t")
+  }
+
+  tmp1 <- tempfile(fileext = ".bed")
+  tmp2 <- tempfile(fileext = ".bed")
+  writeLines(build_anchor_lines(df$chrom1, df$start1, df$end1,
+                                if (has_strand) df$strand1 else NA), tmp1)
+  writeLines(build_anchor_lines(df$chrom2, df$start2, df$end2,
+                                if (has_strand) df$strand2 else NA), tmp2)
+  on.exit(unlink(c(tmp1, tmp2)), add = TRUE)
+
+  if (verbose) message("Importing anchor 1 via robust_import_bed()...")
+  first  <- robust_import_bed(tmp1, verbose = verbose)
+  if (verbose) message("Importing anchor 2 via robust_import_bed()...")
+  second <- robust_import_bed(tmp2, verbose = verbose)
+
+  # Pair-level columns beyond the 10 standard ones aren't part of either
+  # anchor's BED shape -- carry them over as shared metadata directly.
+  extra_cols <- setdiff(names(df),
+                        c("chrom1", "start1", "end1", "chrom2", "start2", "end2",
+                          "strand1", "strand2", "name", "score"))
+  for (col in extra_cols) {
+    S4Vectors::mcols(first)[[col]]  <- df[[col]]
+    S4Vectors::mcols(second)[[col]] <- df[[col]]
+  }
+
+  if (verbose) message("Parsed ", length(first), " pairs from ", file, ".")
+
+  if (!is.null(roi)) {
+    ov1 <- IRanges::overlapsAny(first, roi, ignore.strand = ignore.strand)
+    ov2 <- IRanges::overlapsAny(second, roi, ignore.strand = ignore.strand)
+    keep <- switch(use.region, either = ov1 | ov2, both = ov1 & ov2, first = ov1, second = ov2)
+    first  <- first[keep]
+    second <- second[keep]
+    if (verbose) message("Restricted to region of interest (use.region = '", use.region,
+                         "'): ", length(first), " pairs remain.")
+  }
+
+  list(first = first, second = second, pairs = S4Vectors::mcols(first))
+}
+
+
+
+
+
+
+
 
 

@@ -135,7 +135,7 @@ zfx_plot2<-plot_genomic_tracks(genomicLoc="ZFX", mart=mart,
                                peakFiles=k4me3_peakTracks,peakTrackNames=c("P1","P2") ,peakTrackColors=c("palegreen2","green4") ,
                                loopFiles=ctcf_contactFiles, loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
 
-print(zfx_plot_2$figure)
+print(zfx_plot2$figure)
 
 ```
 ![Alt text](figures/zfx_plot2.png)
