@@ -214,7 +214,7 @@ firstPlot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), mart=mart,
                                  loopTrackNames=c("CTCF"), loopTrackColors="blue", minScore=5)
 
 secondPlot<-plot_genomic_tracks(genomicLoc=c("X",24040226,24232664), mart=mart, 
-                                covFiles =k27me3_coverageTracks, covTrackNames =c("H3K27me3_1","H3K27me3_2"), covTrackColors=c("pink","deeppink3"))
+                                covFiles =c("ENCFF470HOG.bigWig","ENCFF665RDD"), covTrackNames =c("H3K27me3_1","H3K27me3_2"), covTrackColors=c("pink","deeppink3"))
 
 #put them all together with  ```trackDJ ```
 finalPlot<-trackDJ(plotList=list(firstPlot, secondPlot), plotOrder=c("H3K4me3_1","P1","H3K4me3_2","P2","H3K27me3_1","H3K27me3_2", "CTCF","genome"))
@@ -280,7 +280,7 @@ print(finalPlot$figure)
 
 The default annotation is the "hsapiens_gene_ensembl" ensembl set, but this can be changed. for example, if you're working with mouse data, you can switch to "mmusculus_gene_ensembl". For example, if you'd like to plot the mouse H3K27me3 coverage track ENCFF727HQD.bigWig:
 ```{r}
-k27me3_track<-c("/Volumes/page_human_data/neha/trackDJ_files/ENCFF727HQD.bigWig")
+k27me3_track<-c("ENCFF727HQD.bigWig")
 mart_mm<-useMart("ensembl", dataset="mmusculus_gene_ensembl")
 
 k27me3_mouse<-plot_genomic_tracks(genomicLoc="Hprt1", includeTranscripts=TRUE,
